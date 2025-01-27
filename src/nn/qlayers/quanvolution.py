@@ -2,18 +2,15 @@ import torch
 import torch.nn as nn
 import pennylane as qml
 
-import sys
-import os
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class QuanvLayer(nn.Module):
     def __init__(self, qkernel_shape, embedding=None, circuit=None, measurement=None, params=None, qdevice_kwargs=None):
         super(QuanvLayer, self).__init__()
         self.qkernel_shape = qkernel_shape
-        self.embedding = embedding
-        self.circuit = circuit
-        self.measurement = measurement
+        self.embedding = embedding or amplitude_embedding
+        self.circuit = circuit or default_circuit
+        self.measurement = measurement or default_measurement
         self.params = params or {}
         self.qdevice_kwargs = qdevice_kwargs or {}
         self.torch_device = device
@@ -59,7 +56,6 @@ class QuanvLayer(nn.Module):
 
         # Remove the torch.stack line
         outputs = torch.stack(outputs, dim=1)
-
         outputs = outputs.float()
 
         # Reshape outputs
