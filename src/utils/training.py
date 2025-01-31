@@ -1,5 +1,6 @@
 import wandb
 import time
+import torch
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 from torch.utils.data import DataLoader
 from src.utils.plotting import confusion_matrix_plot
@@ -39,7 +40,7 @@ class Trainer:
 
         self.labels = labels if allowed_class_idx is None else [labels[i] for i in allowed_class_idx if i < len(labels)]
     
-        self.device = torch.device("cuda" if torch.cuda.is_available() else cpu)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     def fit(self, 
             model,
