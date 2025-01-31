@@ -13,10 +13,6 @@ class EuroSAT:
     def __init__(self, root="dataset/EuroSAT_RGB", num_classes=None, image_size=64, batch_size=256,
                  test_size=0.2, random_state=42, examples_per_class=1000,
                  allowed_classes=None, output='np'):
-        """
-        Initializes the dataset loader for EuroSAT with specified parameters.
-        Downloads and extracts dataset if not found in root directory.
-        """
         self.root = root
         if not os.path.exists(root):
             self._download_and_extract_dataset()
@@ -43,45 +39,45 @@ class EuroSAT:
         ])
 
     def _download_and_extract_dataset(self):
-        """Downloads and extracts the EuroSAT dataset."""
         os.makedirs("dataset", exist_ok=True)
         zip_path = "dataset/EuroSAT_RGB.zip"
         
-        # Download the dataset
         url = "https://zenodo.org/records/7711810/files/EuroSAT_RGB.zip?download=1"
         print("Downloading EuroSAT dataset...")
         response = requests.get(url)
         with open(zip_path, 'wb') as f:
             f.write(response.content)
         
-        # Extract the dataset
         print("Extracting dataset...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall("dataset")
         
-        # Remove the zip file
         os.remove(zip_path)
         print("Dataset ready!")
 
     def get_loaders(self):
-        """Returns DataLoader objects or NumPy arrays based on output parameter."""
         dataset = torchvision.datasets.ImageFolder(root=self.root, transform=self.transform)
         
-        index_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(self.allowed_classes)} if self.allowed_classes else None
-        
         if self.allowed_classes:
-            dataset = self.filter_classes(dataset)
-            
-        if self.examples_per_class > 0:
-            dataset = self.limit_examples_per_class(dataset)
+            indices = [i for i, (_, target) in enumerate(dataset.samples) if target in self.allowed_classes]
+            dataset = Subset(dataset, indices)
 
-        train_set, val_set = self.split_dataset(dataset)
+        if self.examples_per_class > 0:
+            indices = self._limit_examples_per_class(dataset)
+            dataset = Subset(dataset.dataset if isinstance(dataset, Subset) else dataset, indices)
+
+        train_indices, val_indices = self._split_dataset(dataset)
+        
+        train_set = Subset(dataset.dataset if isinstance(dataset, Subset) else dataset, train_indices)
+        val_set = Subset(dataset.dataset if isinstance(dataset, Subset) else dataset, val_indices)
 
         train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False, num_workers=4)
 
-        self.print_class_counts(train_set, "train")
-        self.print_class_counts(val_set, "validation")
+        self._print_class_counts(train_set, "train")
+        self._print_class_counts(val_set, "validation")
+        
+        index_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(self.allowed_classes)} if self.allowed_classes else None
         
         if self.output == "dl":
             return train_loader, val_loader
@@ -93,46 +89,51 @@ class EuroSAT:
             raise ValueError(f"Unsupported format: {self.output}. Use 'dl' for DataLoader or 'np' for NumPy.")
 
     def _loader_to_numpy(self, loader):
-        """Converts a DataLoader to NumPy arrays."""
         X, y = [], []
         for inputs, labels in loader:
             X.append(inputs.numpy())
             y.append(labels.numpy())
         return np.concatenate(X), np.concatenate(y)
 
-    def filter_classes(self, dataset):
-        """Filters the dataset to only include allowed classes."""
-        filtered_indices = [i for i, (_, target) in enumerate(dataset.samples) if target in self.allowed_classes]
-        return Subset(dataset, filtered_indices)
-
-    def limit_examples_per_class(self, dataset):
-        """Limits the number of examples per class."""
-        targets = [dataset.dataset.targets[idx] for idx in dataset.indices]
-        unique_classes = np.unique(targets)
-        class_indices = {cls: [] for cls in unique_classes}
-
-        for idx in dataset.indices:
-            target = dataset.dataset.targets[idx]
+    def _limit_examples_per_class(self, dataset):
+        if isinstance(dataset, Subset):
+            samples = [dataset.dataset.samples[i] for i in dataset.indices]
+        else:
+            samples = dataset.samples
+            
+        class_indices = collections.defaultdict(list)
+        for idx, (_, target) in enumerate(samples):
             class_indices[target].append(idx)
-
+            
         limited_indices = []
-        for cls, indices in class_indices.items():
+        for target_class, indices in class_indices.items():
             if len(indices) > self.examples_per_class:
                 limited_indices.extend(random.sample(indices, self.examples_per_class))
             else:
                 limited_indices.extend(indices)
+                
+        return limited_indices
 
-        return Subset(dataset.dataset, limited_indices)
-
-    def split_dataset(self, dataset):
-        """Splits the dataset into training and validation sets."""
-        targets = [dataset.dataset.targets[idx] for idx in dataset.indices]
-        train_indices, val_indices = train_test_split(
-            dataset.indices, test_size=self.test_size, random_state=self.random_state, stratify=targets
+    def _split_dataset(self, dataset):
+        if isinstance(dataset, Subset):
+            targets = [dataset.dataset.targets[i] for i in dataset.indices]
+            indices = dataset.indices
+        else:
+            targets = dataset.targets
+            indices = range(len(targets))
+            
+        return train_test_split(
+            indices, test_size=self.test_size,
+            random_state=self.random_state,
+            stratify=targets
         )
-        return Subset(dataset.dataset, train_indices), Subset(dataset.dataset, val_indices)
 
-    def print_class_counts(self, dataset, set_type):
-        """Prints the class distribution in the given dataset."""
-        class_counts = collections.Counter(dataset.dataset.targets[idx] for idx in dataset.indices)
-        suma = sum(class_counts.values())
+    def _print_class_counts(self, dataset, set_type):
+        if isinstance(dataset, Subset):
+            targets = [dataset.dataset.targets[i] for i in dataset.indices]
+        else:
+            targets = dataset.targets
+        class_counts = collections.Counter(targets)
+        print(f"\nClass distribution in {set_type} set:")
+        for label in sorted(class_counts.keys()):
+            print(f"Class {label}: {class_counts[label]}")
