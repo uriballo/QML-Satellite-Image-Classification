@@ -1,9 +1,17 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import seaborn as sns
 
 
 def confusion_matrix_plot(confusion_matrix, labels, title='Confusion Matrix', save_path='', filename='confusion_matrix.png'):
+
+    for i in range(len(labels)):
+        if labels[i] == "AnnualCrop":
+            labels[i] = "Annual\nCrop"
+        elif labels[i] == "HerbaceousVegetation":
+            labels[i] = "Herbaceous\nVegetation"
+        elif labels[i] == "PermanentCrop":
+            labels[i] = "Permanent\nCrop"
+
     plt.figure(figsize=(8, 6))
     
     # Plotting the confusion matrix with heatmap
