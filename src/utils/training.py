@@ -1,6 +1,8 @@
+import schedulefree
 import wandb
 import time
 import torch
+import schedulefree as sf
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 from torch.utils.data import DataLoader
 from torch.utils.data import DataLoader
@@ -34,6 +36,7 @@ class Trainer:
                 plot: bool = True,
                 allowed_classes: list = None,
                 lr: float = 0.01,
+                use_schedulefree: bool = False,
                 ):
 
         self.model = model
@@ -46,6 +49,7 @@ class Trainer:
         self.use_quantum = use_quantum
         self.plot = plot
         self.lr = lr
+        self.schedulefree = use_schedulefree
         self.train_losses = []
         self.train_accuracies = []
         self.val_losses = []
@@ -82,7 +86,10 @@ class Trainer:
         lr, epochs = self.lr, self.epochs
         
         criterion = self.criterion
-        optimizer = torch.optim.Adam(model.parameters(), lr = lr)
+        if self.schedulefree:
+            optimizer = sf.AdamWScheduleFree(model.parameters(), lr=lr)
+        else:
+            optimizer = torch.optim.Adam(model.parameters(), lr = lr)
         
         all_labels = []
         all_preds = []        
@@ -99,6 +106,10 @@ class Trainer:
         
         for epoch in range(epochs):
             model.train()
+
+            if self.schedulefree:
+                optimizer.train()
+
             running_loss, correct, total = 0.0, 0, 0
 
             start_time = time.time()
@@ -131,7 +142,7 @@ class Trainer:
             elapsed_time = time.time() - start_time
 
             # VAL
-            val_loss, val_acc, precision, recall, f1, confusion_matrix_val = self._evaluate(val_loader, model)
+            val_loss, val_acc, precision, recall, f1, confusion_matrix_val = self._evaluate(val_loader, model, optimizer)
 
             self.train_losses.append(train_loss)
             self.train_accuracies.append(train_acc)
@@ -167,12 +178,14 @@ class Trainer:
                 confusion_matrix_plot(self.confusion_matrix_train, self.labels, title = 'Confusion matrix train')
                 confusion_matrix_plot(confusion_matrix_val, self.labels, title = 'Confusion matrix val')
 
-    def _evaluate(self, val_loader: DataLoader, model):
+    def _evaluate(self, val_loader: DataLoader, model, optimizer):
         """
         Evaluate the model on a given DataLoader. Returns average loss and accuracy.
         """
         
         model.eval()
+        if self.schedulefree:
+            optimizer.eval()
         val_loss, val_acc, running_loss, correct, total = 0.0, 0.0, 0.0, 0, 0
 
         criterion = self.criterion
