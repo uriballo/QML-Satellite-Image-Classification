@@ -48,8 +48,6 @@ class FlexHybridCNN(nn.Module):
         self.kernel_size_2 = kernel_size_2
         self.fc_hidden_dim = fc_hidden_dim
 
-        self._best_val_loss = float('inf')
-
         self.device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 
         self.labels = ['AnnualCrop', 'Forest',
