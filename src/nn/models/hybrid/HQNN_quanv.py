@@ -35,8 +35,6 @@ class FlexHybridCNN(nn.Module):
         kernel_size_1: int = 8, # 3
         kernel_size_2: int = 3,
         fc_hidden_dim: int = 128,
-        epochs: int = 10,
-        batch_size: int = 32,
         quanv_params: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
