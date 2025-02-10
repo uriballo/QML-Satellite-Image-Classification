@@ -1,23 +1,24 @@
 import os
 import requests
 import zipfile
+import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, Dataset
 from sklearn.model_selection import train_test_split
 import numpy as np
 import collections
 import random
+import pandas as pd
 
 class EuroSAT:
-    def __init__(self, root="dataset/EuroSAT_RGB", num_classes=None, image_size=64, batch_size=256,
+    def __init__(self, root="dataset/EuroSAT_RGB", image_size=64, batch_size=256,
                  test_size=0.2, random_state=42, examples_per_class=1000,
                  allowed_classes=None, output='np'):
         self.root = root
         if not os.path.exists(root):
             self._download_and_extract_dataset()
-            
-        self.num_classes = num_classes
+
         self.image_size = image_size
         self.batch_size = batch_size
         self.test_size = test_size
@@ -30,7 +31,6 @@ class EuroSAT:
         }
         
         self.allowed_classes = [self.class_dict[c] for c in allowed_classes] if allowed_classes else None
-        self.labels = list(self.class_dict.keys())
         
         self.transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
@@ -81,6 +81,7 @@ class EuroSAT:
         
         if self.output == "dl":
             return train_loader, val_loader
+            
         elif self.output == "np":
             X_train, y_train = self._loader_to_numpy(train_loader)
             X_test, y_test = self._loader_to_numpy(val_loader)
@@ -137,3 +138,38 @@ class EuroSAT:
         print(f"\nClass distribution in {set_type} set:")
         for label in sorted(class_counts.keys()):
             print(f"Class {label}: {class_counts[label]}")
+
+
+class DeepSatCSV(Dataset):
+    def __init__(self, x_file, y_file, transform=None, max_samples=None):
+        # Cargar datos desde CSV
+        self.X = pd.read_csv(x_file, header=None).values  # Cargar imágenes
+        self.y = pd.read_csv(y_file, header=None).values  # Cargar etiquetas
+        self.transform = transform
+        
+        # Normalizar imágenes (de [0, 255] a [0, 1])
+        self.X = self.X.astype(np.float32) / 255.0
+        
+        # Convertir etiquetas de one-hot a índices de clase
+        self.y = np.argmax(self.y, axis=1)  # Si ya está en índices, omitir esto
+
+        # Redimensionar imágenes (DeepSat usa 4 canales y 28x28 píxeles por imagen)
+        num_samples = self.X.shape[0]
+        self.X = self.X.reshape((num_samples, 4, 28, 28))  # [N, C, H, W]
+
+        # Limitar el número de muestras si se especifica
+        if max_samples is not None:
+            self.X = self.X[:max_samples]
+            self.y = self.y[:max_samples]
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        image = torch.tensor(self.X[idx])  # Convertir a tensor
+        label = torch.tensor(self.y[idx], dtype=torch.long)  # Convertir a tensor
+        
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
