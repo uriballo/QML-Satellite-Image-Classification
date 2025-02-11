@@ -22,7 +22,8 @@ class Trainer:
         use_quantum (bool): If True, enables quantum-based layers.
         plot (bool): If True, generates and displays confusion matrix.
         allowed_classes (list): List of class labels allowed for training and evaluation. If None, all classes are used.
-        lr (float): learning rate for the optimizer.
+        lr (float): Learning rate for the optimizer.
+        use_schedulefree (bool): If True, enables schedulefree module.
     """
     def __init__(self,
                 model: torch.nn.Module,
@@ -61,23 +62,8 @@ class Trainer:
         self.plot = plot
         self.confusion_matrix_train = None
         self.confusion_matrix_val = None
-    
-        labels = ['AnnualCrop', 'Forest',
-                  'HerbaceousVegetation',
-                  'Highway', 'Industrial',
-                  'Pasture', 'PermanentCrop',
-                  'Residential', 'River',
-                  'SeaLake']
-    
-        if allowed_classes is None:
-            self.labels = labels
-        else:
-            self.labels = []
-            for class_ in labels:
-                if class_ in allowed_classes:
-                    self.labels.append(class_)
+        self.labels = allowed_classes
 
-    
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     def fit(self):
@@ -86,10 +72,11 @@ class Trainer:
         lr, epochs = self.lr, self.epochs
         
         criterion = self.criterion
+
         if self.schedulefree:
-            optimizer = sf.AdamWScheduleFree(model.parameters(), lr=lr)
+            self.optimizer = sf.AdamWScheduleFree(model.parameters(), lr=lr)
         else:
-            optimizer = torch.optim.Adam(model.parameters(), lr = lr)
+            self.optimizer = torch.optim.Adam(model.parameters(), lr = lr)
         
         all_labels = []
         all_preds = []        
@@ -108,20 +95,20 @@ class Trainer:
             model.train()
 
             if self.schedulefree:
-                optimizer.train()
-
+                self.optimizer.train()
+            
             running_loss, correct, total = 0.0, 0, 0
 
             start_time = time.time()
                 
             for (inputs, labels) in train_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)   
-                
-                optimizer.zero_grad()
-                outputs = model(inputs)
+
+                self.optimizer.zero_grad()
+                outputs = model(inputs).to(self.device)
                 loss = criterion(outputs, labels)
                 loss.backward()
-                optimizer.step()
+                self.optimizer.step()
                 
                 running_loss += loss.item()*inputs.size(0)
                 
@@ -142,7 +129,7 @@ class Trainer:
             elapsed_time = time.time() - start_time
 
             # VAL
-            val_loss, val_acc, precision, recall, f1, confusion_matrix_val = self._evaluate(val_loader, model, optimizer)
+            val_loss, val_acc, precision, recall, f1, confusion_matrix_val = self._evaluate(val_loader, model)
 
             self.train_losses.append(train_loss)
             self.train_accuracies.append(train_acc)
@@ -157,18 +144,18 @@ class Trainer:
                 
                 wandb.log({
                     #"epoch": epoch + 1,
-                    "train_loss": train_loss,
                     "train_acc": train_acc,
-                    "val_loss": val_loss,
                     "val_acc": val_acc,
                     "precision": precision,
                     "recall": recall,
-                    "f1": f1
+                    "f1": f1,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
                 })
         
             print(f"Epoch [{epoch+1}/{epochs}]: "
-                f"Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.4f}%, "
-                f"Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.4f}%")
+                f"Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.2f}%, "
+                f"Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.2f}%")
             
         
         
@@ -178,14 +165,16 @@ class Trainer:
                 confusion_matrix_plot(self.confusion_matrix_train, self.labels, title = 'Confusion matrix train')
                 confusion_matrix_plot(confusion_matrix_val, self.labels, title = 'Confusion matrix val')
 
-    def _evaluate(self, val_loader: DataLoader, model, optimizer):
+    def _evaluate(self, val_loader: DataLoader, model):
         """
         Evaluate the model on a given DataLoader. Returns average loss and accuracy.
         """
         
         model.eval()
+        
         if self.schedulefree:
-            optimizer.eval()
+            self.optimizer.eval()
+            
         val_loss, val_acc, running_loss, correct, total = 0.0, 0.0, 0.0, 0, 0
 
         criterion = self.criterion
@@ -199,7 +188,7 @@ class Trainer:
             for (inputs, labels) in val_loader:
                 inputs, labels = inputs.to(self.device), labels.to(self.device)
                 
-                outputs = model(inputs)
+                outputs = model(inputs).to(self.device)
                 loss = criterion(outputs, labels)
                 running_loss += loss.item() * inputs.size(0)
                 
