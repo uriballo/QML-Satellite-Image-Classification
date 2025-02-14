@@ -5,13 +5,19 @@ import pennylane as qml
 import sys
 import os
 
-
+class DefaultReshaper:
+    def __init__(self):
+        self.reshape = self._flatten
+    
+    def _flatten(self,x):
+        return x.reshape(x.shape[0],-1)
+        
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 torch.set_default_device(device)
 
 class QuantumCircuitModel(nn.Module):
-    def __init__(self, n_wires,embedding, circuit=None, measurement=None, params=None, weight_shapes=None, qdevice_kwargs=None):
+    def __init__(self, n_wires,embedding, circuit=None, measurement=None, params=None, weight_shapes=None,reshaper=None, qdevice_kwargs=None):
         super(QuantumCircuitModel, self).__init__()
         self.n_wires = n_wires
         self.embedding = embedding
@@ -21,6 +27,7 @@ class QuantumCircuitModel(nn.Module):
         self.qdevice_kwargs = qdevice_kwargs or {}
         self.torch_device = device
         self.measurement = measurement
+        self.reshaper = reshaper or DefaultReshaper()
         
         qml_device_name = self.qdevice_kwargs.pop('qml_device_name', 'default.qubit')
         self.qml_device = qml.device(
@@ -51,6 +58,6 @@ class QuantumCircuitModel(nn.Module):
 
     def forward(self,x):
         x = x.to(self.torch_device)
-        x = x.reshape(x.shape[0],-1)
+        x = self.reshaper.reshape(x)
 
         return self.qlayer(x)
