@@ -16,6 +16,8 @@ class Trainer:
         train_loader (DataLoader): DataLoader for the training dataset.
         val_loader (DataLoader): DataLoader for the validation dataset.
         epochs (int): Number of training epochs.
+        early_stopping (bool): If True, use early stopping based on validation loss.
+        patience (int): Number of epochs to wait for improvement before stopping.
         log_wandb (bool): If True, log metrics to Weights & Biases.
         wandb_project (str): W&B project name (used if log_wandb=True).
         wandb_run_name (str): W&B run name (used if log_wandb=True).
@@ -30,6 +32,8 @@ class Trainer:
                 train_loader: DataLoader,
                 val_loader: DataLoader,
                 epochs: int = 10,
+                early_stopping: bool = False,
+                patience: int = 3,
                 log_wandb: bool = True,
                 wandb_project: str = 'Prueba train',
                 wandb_run_name: str = '1',
@@ -44,6 +48,8 @@ class Trainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.epochs = epochs
+        self.early_stopping = early_stopping
+        self.patience = patience
         self.log_wandb = log_wandb
         self.wandb_project = wandb_project
         self.wandb_run_name = wandb_run_name
@@ -63,6 +69,8 @@ class Trainer:
         self.confusion_matrix_train = None
         self.confusion_matrix_val = None
         self.labels = allowed_classes
+        self._best_val_loss = float('inf')
+        self._early_stop_counter = 0
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -120,8 +128,7 @@ class Trainer:
                 all_preds.extend(preds.cpu().numpy())
 
             self.confusion_matrix_train = confusion_matrix(all_labels, all_preds)
-            
-            
+        
 
             train_loss = running_loss / total
             train_acc = 100 * correct / total
@@ -138,7 +145,17 @@ class Trainer:
             self.precision.append(precision)
             self.recall.append(recall)
             self.f1.append(f1)
-           
+            
+            # Early stopping check
+            if self.early_stopping:
+                if val_loss < self._best_val_loss:
+                    self._best_val_loss = val_loss
+                    self._early_stop_counter = 0
+                else:
+                    self._early_stop_counter += 1
+                    if self._early_stop_counter >= self.patience:
+                        print(f"Early stopping at epoch {epoch+1}")
+                        break
             # Logging
             if self.log_wandb:
                 
@@ -206,6 +223,11 @@ class Trainer:
         precision = precision_score(all_labels, all_preds, average = 'macro', zero_division = 1)
         recall = recall_score(all_labels, all_preds, average = 'macro', zero_division = 1)
         f1 = f1_score(all_labels, all_preds, average = 'macro', zero_division = 1)
+
+        self.confusion_matrix_val = confusion_matrix(all_labels, all_preds)
+        
+        
+        return val_loss, val_acc, precision, recall, f1, self.confusion_matrix_val
 
         self.confusion_matrix_val = confusion_matrix(all_labels, all_preds)
         
