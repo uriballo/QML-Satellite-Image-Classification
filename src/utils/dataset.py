@@ -4,7 +4,7 @@ import zipfile
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Subset, Dataset
+from torch.utils.data import DataLoader, Subset, Dataset, TensorDataset
 from sklearn.model_selection import train_test_split
 import numpy as np
 import collections
@@ -173,3 +173,62 @@ class DeepSatCSV(Dataset):
             image = self.transform(image)
 
         return image, label
+    
+
+def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size):
+    if dataset == "EuroSAT":
+        data = EuroSAT(root= 'dataset/EuroSAT_RGB',
+                                image_size=image_size,
+                                examples_per_class=limit,
+                                batch_size=4,
+                                test_size=test_size,
+                                allowed_classes=allowed_classes,
+                                output = output
+                        )
+        
+        if output == 'dl':
+            return data.get_loaders()
+        elif output == 'np':
+            X_train, y_train, X_val, y_val, index_mapping = data.get_loaders()
+        
+            X_train = torch.tensor(X_train, dtype=torch.float32)
+            y_train = torch.tensor(y_train, dtype=torch.long)
+            X_val = torch.tensor(X_val, dtype=torch.float32)
+            y_val = torch.tensor(y_val, dtype=torch.long)
+        
+            train_dataset = TensorDataset(X_train, y_train) 
+            val_dataset = TensorDataset(X_val, y_val)
+
+            return DataLoader(train_dataset, batch_size = 32, shuffle = True), DataLoader(val_dataset, batch_size = 32, shuffle = False)
+        else:
+            raise ValueError("Invalid output. Accepted values are 'dl' or 'np'")
+    else:
+        if dataset == "DeepSat4":
+            # Root
+            data_path = "dataset/DeepSat4/"
+            x_train_file = data_path + "X_train_sat4.csv"
+            y_train_file = data_path + "y_train_sat4.csv"
+            x_test_file = data_path + "X_test_sat4.csv"
+            y_test_file = data_path + "y_test_sat4.csv"
+            
+        elif dataset == "DeepSat6":
+            # Root
+            data_path = "dataset/DeepSat6/"
+            x_train_file = data_path + "X_train_sat6.csv"
+            y_train_file = data_path + "y_train_sat6.csv"
+            x_test_file = data_path + "X_test_sat6.csv"
+            y_test_file = data_path + "y_test_sat6.csv"
+
+        else:
+            raise ValueError("Invalid dataset. Accepted values are 'EuroSAT', 'DeepSat4' or 'DeepSat6'")
+            
+        # Limit
+        train_size = 1 - test_size
+        max_train_samples = int(train_size * limit) 
+        max_test_samples = int(test_size * limit)   
+        
+        # Create DataLoaders
+        train_dataset = DeepSatCSV(x_train_file, y_train_file, max_samples=max_train_samples)
+        test_dataset = DeepSatCSV(x_test_file, y_test_file, max_samples=max_test_samples)
+
+        return DataLoader(train_dataset, batch_size=32, shuffle=True), DataLoader(test_dataset, batch_size=32, shuffle=False)
