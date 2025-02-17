@@ -60,7 +60,7 @@ def load_params(embedding_type, circuit, measurement, limit, dataset, qkernel_sh
     else:
         prename = "classic_"+ dataset + "_"
         name_run = "classic"
-        name_prueba = [f"Pruebas classic limit = {limit}"]
+        name_prueba = f"Pruebas classic limit = {limit}"
         quanv_params = None
 
     if (dataset == "DeepSat4" or dataset == "DeepSat6"):
