@@ -3,7 +3,9 @@ import pennylane as qml
 import torch
 
 from src.nn.ansatz.default import default_circuit
+from src.nn.encodings.IQP_embedding import custom_iqp_embedding
 from src.nn.encodings.pennylane_templates import angle_embedding, amplitude_embedding
+from src.nn.encodings.waterfall_embedding import waterfall_embedding
 from src.nn.measurements.default import default_measurement
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,7 +45,8 @@ class QuantumLinear(nn.Module):
 
             return self.measurement(wires, self.measurement_params)
 
-        if self.embedding is angle_embedding:
+        # refactor logic
+        if self.embedding is angle_embedding or self.embedding is custom_iqp_embedding or self.embedding is waterfall_embedding:
             assert in_features % self.num_qubits == 0, ("The number of input features should be divisible by the number of "
                                                    "qubits per circuit.")
             self.n_circuits = in_features // self.num_qubits
