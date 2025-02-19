@@ -175,12 +175,12 @@ class DeepSatCSV(Dataset):
         return image, label
     
 
-def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size):
+def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size, batch_size=4):
     if dataset == "EuroSAT":
         data = EuroSAT(root= 'dataset/EuroSAT_RGB',
                                 image_size=image_size,
                                 examples_per_class=limit,
-                                batch_size=4,
+                                batch_size=batch_size,
                                 test_size=test_size,
                                 allowed_classes=allowed_classes,
                                 output = output
