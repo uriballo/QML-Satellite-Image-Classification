@@ -1,5 +1,5 @@
 import schedulefree
-import wandb
+import mlflow
 import time
 import torch
 import schedulefree as sf
@@ -34,9 +34,9 @@ class Trainer:
                 epochs: int = 10,
                 early_stopping: bool = False,
                 patience: int = 3,
-                log_wandb: bool = True,
-                wandb_project: str = 'Prueba train',
-                wandb_run_name: str = '1',
+                log: bool = True,
+                mlflow_project: str = 'Prueba train',
+                mlflow_run_name: str = '1',
                 use_quantum: bool = True,
                 plot: bool = True,
                 allowed_classes: list = None,
@@ -50,9 +50,9 @@ class Trainer:
         self.epochs = epochs
         self.early_stopping = early_stopping
         self.patience = patience
-        self.log_wandb = log_wandb
-        self.wandb_project = wandb_project
-        self.wandb_run_name = wandb_run_name
+        self.log = log
+        self.mlflow_project = mlflow_project
+        self.mlflow_run_name = mlflow_run_name
         self.use_quantum = use_quantum
         self.plot = plot
         self.lr = lr
@@ -89,13 +89,11 @@ class Trainer:
         all_labels = []
         all_preds = []        
 
-        if self.log_wandb:
-            wandb.init(project = self.wandb_project, name = self.wandb_run_name)
-            wandb.config.update({
+        if self.log:
+            mlflow.start_run(run_name=self.mlflow_run_name)
+            mlflow.log_params({
                 "lr": lr,
                 "epochs": epochs,
-                #"batch_size": self.batch_size,
-                #"qkernel_shape": self.qkernel_shape,
                 "use_quantum": self.use_quantum,
             })
         
@@ -157,26 +155,20 @@ class Trainer:
                         print(f"Early stopping at epoch {epoch+1}")
                         break
             # Logging
-            if self.log_wandb:
-                
-                wandb.log({
-                    #"epoch": epoch + 1,
-                    "train_acc": train_acc,
-                    "val_acc": val_acc,
-                    "precision": precision,
-                    "recall": recall,
-                    "f1": f1,
-                    "train_loss": train_loss,
-                    "val_loss": val_loss,
-                })
+            if self.log:
+                mlflow.log_metric("train_acc", train_acc, step=epoch)
+                mlflow.log_metric("val_acc", val_acc, step=epoch)
+                mlflow.log_metric("precision", precision, step=epoch)
+                mlflow.log_metric("recall", recall, step=epoch)
+                mlflow.log_metric("f1", f1, step=epoch)
+                mlflow.log_metric("train_loss", train_loss, step=epoch)
+                mlflow.log_metric("val_loss", val_loss, step=epoch)
         
             print(f"Epoch [{epoch+1}/{epochs}]: "
                 f"Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.2f}%, "
                 f"Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.2f}%")
-            
-        
-        
-        wandb.finish()
+
+        mlflow.end_run()
 
         if self.plot:
                 confusion_matrix_plot(self.confusion_matrix_train, self.labels, title = 'Confusion matrix train')
@@ -223,11 +215,6 @@ class Trainer:
         precision = precision_score(all_labels, all_preds, average = 'macro', zero_division = 1)
         recall = recall_score(all_labels, all_preds, average = 'macro', zero_division = 1)
         f1 = f1_score(all_labels, all_preds, average = 'macro', zero_division = 1)
-
-        self.confusion_matrix_val = confusion_matrix(all_labels, all_preds)
-        
-        
-        return val_loss, val_acc, precision, recall, f1, self.confusion_matrix_val
 
         self.confusion_matrix_val = confusion_matrix(all_labels, all_preds)
         

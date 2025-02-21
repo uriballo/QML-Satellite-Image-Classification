@@ -3,7 +3,7 @@ torchvision
 scikit-learn
 pennylane
 numpy
-wandb
+mlflow
 pytest
 matplotlib
 seaborn
