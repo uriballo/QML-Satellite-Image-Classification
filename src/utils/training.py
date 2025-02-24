@@ -90,6 +90,7 @@ class Trainer:
         all_preds = []        
 
         if self.log:
+            mlflow.set_experiment(self.mlflow_project)
             mlflow.start_run(run_name=self.mlflow_run_name)
             mlflow.log_params({
                 "lr": lr,
