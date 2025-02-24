@@ -9,88 +9,91 @@ class FlexHybridCNN(nn.Module):
     """
     A flexible hybrid CNN model that can optionally use a QuanvLayer or 
     a classical convolution layer as the first convolutional operation.
-
     Args:
-        in_channels (int): Number of input channels (e.g., 1 for grayscale, 3 for RGB).
         n_classes (int): Number of output classes.
         use_quantum (bool): If True, apply QuanvLayer as the first layer; otherwise classical.
         qkernel_shape (int): Dimension for the quantum patch size.
         n_filters_1 (int): Number of filters in the first convolution layer (or output channels for Quanv).
-        n_filters_2 (int): Number of filters in the second convolution layer.
-        kernel_size_1 (int): Kernel size for the second layer if using quantum first layer or the first classical layer.
-        kernel_size_2 (int): Kernel size for the second classical layer.
         fc_hidden_dim (int): Dimension of the hidden FC layer.
+        lr (float): Learning rate.
         epochs (int): Number of training epochs.
-        batch_size (int): Batch size for training.
         quanv_params (dict): Parameters for QuanvLayer (embedding, circuit, measurement, trainable, random_params, etc.).
     """
     
     def __init__(self,
-        in_channels: int = 3, # 1
+        embedding_params: dict,
+        variational_params: dict,
+        measurement_params: dict,
         n_classes: int = 10,
         use_quantum: bool = True,
         qkernel_shape: int = 2,
         n_filters_1: int = 32,
-        n_filters_2: int = 32,
-        kernel_size_1: int = 8, # 3
-        kernel_size_2: int = 3,
         fc_hidden_dim: int = 128,
-        quanv_params: Optional[Dict[str, Any]] = None,
+        epochs: int = 10,
+        dataset: str = 'EuroSAT',
+        image_size: int = 32,
     ):
         super().__init__()
-        self.in_channels = in_channels
+        self.embedding = embedding_params
+        self.variational = variational_params
+        self.measurement = measurement_params
         self.n_classes = n_classes
         self.use_quantum = use_quantum
         self.qkernel_shape = qkernel_shape
         self.n_filters_1 = n_filters_1
-        self.n_filters_2 = n_filters_2
-        self.kernel_size_1 = kernel_size_1
-        self.kernel_size_2 = kernel_size_2
         self.fc_hidden_dim = fc_hidden_dim
+        self.epochs = epochs
+        self.dataset = dataset
+        self.image_size = image_size
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.labels = ['AnnualCrop', 'Forest',
-                  'HerbaceousVegetation',
-                  'Highway', 'Industrial',
-                  'Pasture', 'PermanentCrop',
-                  'Residential', 'River',
-                  'SeaLake']
 
-        
+        if (self.dataset == "DeepSat4" or self.dataset == "DeepSat6"):
+            if use_quantum:
+                self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 3, 16, 7, 27
+                if self.image_size == 16:
+                    self.kernel_size_2 = 21
+                if self.qkernel_shape == 3:
+                    self.in_channels_2, self.kernel_size_2 = 36, 26
+            else:
+                self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 4, 32, 28, 27
+                if self.image_size == 16:
+                    self.kernel_size_2 = 21
+        elif self.dataset == "EuroSAT":
+            self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 3, 3 * self.qkernel_shape**2, 7, 7
+
+
         # Initialize the first layer
         if self.use_quantum:
             # Quanvolutional layer with optional params
             self.quanv = QuanvLayer(
                 qkernel_shape=self.qkernel_shape,
-                **(quanv_params or {})
+                embedding=self.embedding,
+                circuit=self.variational,
+                measurement=self.measurement,
             ).to(self.device)
 
             # The "output channels" from QuanvLayer is typically the measurement dimension.
             # For a single measurement per patch, we treat that as n_filters_1.
             # If your measurement returns multiple values, adjust here.
-            
-            first_in_channels = self.n_filters_1
                 
         else:
-            in_channels = 3
             # Classical convolution for the first layer
             self.conv1_classical = nn.Conv2d(
-                in_channels = in_channels,
+                in_channels = self.in_channels_1,
                 out_channels = self.n_filters_1,
                 kernel_size = self.kernel_size_1
             ).to(self.device)
-            first_in_channels = self.n_filters_1
     
         # Second convolution
-        if use_quantum:
-            in_channels = 3*self.qkernel_shape**2
-        else:
-            in_channels = 32
+        if not use_quantum:
+            self.in_channels_2 = 32
+            
         self.conv2 = nn.Conv2d(
-            in_channels = in_channels, 
-            out_channels = first_in_channels, 
-            kernel_size = self.kernel_size_1,
+            in_channels = self.in_channels_2,
+            out_channels = self.n_filters_1,
+            kernel_size = self.kernel_size_2,
             padding = (self.kernel_size_1 // 2), # example: same-ish padding
         ).to(self.device)
 
@@ -127,5 +130,6 @@ class FlexHybridCNN(nn.Module):
         return x
  
     
+
     def __name__(self) -> str:
         return self.__class__.__name__
