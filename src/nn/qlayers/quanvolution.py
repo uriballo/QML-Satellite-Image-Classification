@@ -5,37 +5,36 @@ from src.nn.ansatz.default import default_circuit
 from src.nn.encodings.pennylane_templates import amplitude_embedding
 from src.nn.measurements.default import default_measurement
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 class QuanvLayer(nn.Module):
-    def __init__(self, qkernel_shape, embedding=None, circuit=None, measurement=None, params=None, qdevice_kwargs=None):
+    def __init__(self, qkernel_shape, embedding=None, circuit=None, measurement=None, qdevice_kwargs=None):
         super(QuanvLayer, self).__init__()
         self.qkernel_shape = qkernel_shape
-        self.embedding = embedding or amplitude_embedding
-        self.circuit = circuit or default_circuit
-        self.measurement = measurement or default_measurement
-        self.params = params or {}
+        self.embedding = embedding["func"] or amplitude_embedding
+        self.embedding_params = embedding["func_params"] or None
+        self.circuit = circuit["func"] or default_circuit
+        self.circuit_params = circuit["func_params"] or None
+        self.measurement = measurement["func"] or default_measurement
+        self.measurement_params = measurement["func_params"] or None
         self.qdevice_kwargs = qdevice_kwargs or {}
-        self.torch_device = device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.qml_device = None
         self.qnode = None
 
     def quantum_circuit(self, inputs):
         wires = range(self.qkernel_shape ** 2)
-        params = self.params
 
         # Embedding block
-        self.embedding(inputs, wires, params.get('embedding', {}))
+        self.embedding(inputs, wires, self.embedding_params)
 
         # Circuit block
-        self.circuit(wires, params.get('circuit', {}))
+        self.circuit(wires, self.circuit_params)
 
         # Measurement block
-        return self.measurement(wires, params.get('measurement', {}))
+        return self.measurement(wires, self.measurement_params)
 
     def forward(self, x):
         batch_size, _, height, width = x.size()
-        x = x.to(self.torch_device)
+        x = x.to(self.device)
         patch_size = self.qkernel_shape ** 2
 
         if self.qnode is None:
