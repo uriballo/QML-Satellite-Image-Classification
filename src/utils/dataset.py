@@ -141,7 +141,7 @@ class EuroSAT:
 
 
 class DeepSatCSV(Dataset):
-    def __init__(self, x_file, y_file, transform=None, max_samples=None):
+    def __init__(self, x_file, y_file, transform=None, max_samples=None, target_size=None):
         # Cargar datos desde CSV
         self.X = pd.read_csv(x_file, header=None).values  # Cargar imágenes
         self.y = pd.read_csv(y_file, header=None).values  # Cargar etiquetas
@@ -153,14 +153,49 @@ class DeepSatCSV(Dataset):
         # Convertir etiquetas de one-hot a índices de clase
         self.y = np.argmax(self.y, axis=1)  # Si ya está en índices, omitir esto
 
-        # Redimensionar imágenes (DeepSat usa 4 canales y 28x28 píxeles por imagen)
+        # Redimensionar imágenes a [N, C, H, W]
         num_samples = self.X.shape[0]
-        self.X = self.X.reshape((num_samples, 4, 28, 28))  # [N, C, H, W]
+        self.X = self.X.reshape((num_samples, 4, 28, 28))
+        
+        # Balancear clases
+        self.balance_classes()
 
-        # Limitar el número de muestras si se especifica
+        # Limitar el número total de muestras si se especifica
         if max_samples is not None:
             self.X = self.X[:max_samples]
             self.y = self.y[:max_samples]
+        
+        # Guardar el tamaño de la imagen original y objetivo
+        self.image_size = 28
+        self.target_size = target_size if target_size else 28
+
+    def balance_classes(self):
+        """Asegura que todas las clases tengan el mismo número de muestras."""
+        unique_classes, class_counts = np.unique(self.y, return_counts=True)
+        min_samples = min(class_counts)  # Número mínimo de muestras en una clase
+
+        balanced_X = []
+        balanced_y = []
+
+        for cls in unique_classes:
+            # Obtener índices de la clase actual
+            indices = np.where(self.y == cls)[0]
+            np.random.shuffle(indices)  # Mezclar para seleccionar aleatoriamente
+
+            # Seleccionar el mismo número de muestras para cada clase
+            selected_indices = indices[:min_samples]
+            
+            balanced_X.append(self.X[selected_indices])
+            balanced_y.append(self.y[selected_indices])
+
+        # Convertir listas en arrays de numpy y asegurarse de que las dimensiones coincidan
+        self.X = np.vstack(balanced_X)  # Concatenar sobre el eje 0
+        self.y = np.hstack(balanced_y)  # Etiquetas en 1D
+
+        # Mezclar el dataset final para evitar agrupaciones de clases
+        perm = np.random.permutation(len(self.y))
+        self.X = self.X[perm]
+        self.y = self.y[perm]
 
     def __len__(self):
         return len(self.X)
@@ -169,10 +204,28 @@ class DeepSatCSV(Dataset):
         image = torch.tensor(self.X[idx])  # Convertir a tensor
         label = torch.tensor(self.y[idx], dtype=torch.long)  # Convertir a tensor
         
+        # Redimensionar la imagen si target_size es diferente de image_size
+        if self.target_size != self.image_size:
+            image = self.resize_image(image, self.target_size)
+        
         if self.transform:
             image = self.transform(image)
 
         return image, label
+    
+    def resize_image(self, image, target_size):
+        """Redimensionar imagen a target_size, con padding o downscaling."""
+        _, h, w = image.shape
+        
+        if target_size > h:
+            # Aumentar el tamaño con relleno
+            pad = (target_size - h) // 2
+            image = F.pad(image, (pad, pad, pad, pad), mode='constant', value=0)
+        elif target_size < h:
+            # Reducir el tamaño con interpolación
+            image = F.interpolate(image.unsqueeze(0), size=(target_size, target_size), mode='bilinear', align_corners=False).squeeze(0)
+        
+        return image
     
 
 def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size, batch_size=4):
