@@ -7,6 +7,7 @@ from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_
 from torch.utils.data import DataLoader
 from torch.utils.data import DataLoader
 from src.utils.plotting import confusion_matrix_plot
+from loguru import logger
 
 class Trainer:
     """
@@ -42,6 +43,7 @@ class Trainer:
                 allowed_classes: list = None,
                 lr: float = 0.01,
                 use_schedulefree: bool = False,
+                mlflow_params: dict = None,
                 ):
 
         self.model = model
@@ -71,6 +73,7 @@ class Trainer:
         self.labels = allowed_classes
         self._best_val_loss = float('inf')
         self._early_stop_counter = 0
+        self.mlflow_params = mlflow_params or {} 
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -92,12 +95,67 @@ class Trainer:
         if self.log:
             mlflow.set_experiment(self.mlflow_project)
             mlflow.start_run(run_name=self.mlflow_run_name)
-            mlflow.log_params({
-                "lr": lr,
-                "epochs": epochs,
+            
+            # Combine passed parameters with extracted model attributes
+            params_to_log = {
+                # Start with any parameters passed to the constructor
+                **self.mlflow_params,
+                
+                # Add basic training parameters
+                "lr": self.lr,
+                "epochs": self.epochs,
                 "use_quantum": self.use_quantum,
-            })
-        
+                "use_schedulefree": self.schedulefree,
+                "early_stopping": self.early_stopping,
+                "patience": self.patience,
+                "batch_size": next(iter(self.train_loader))[0].shape[0] if len(self.train_loader) > 0 else None,
+                
+                # Add model parameters
+                "model_type": self.model.__class__.__name__,
+                "model_parameters": sum(p.numel() for p in self.model.parameters()),
+                "trainable_parameters": sum(p.numel() for p in self.model.parameters() if p.requires_grad),
+                
+                # Extract model-specific attributes if they exist
+                "qkernel_shape": getattr(self.model, 'qkernel_shape', None),
+                "fc_hidden_dim": getattr(self.model, 'fc_hidden_dim', None),
+                "n_filters_1": getattr(self.model, 'n_filters_1', None),
+            }
+            
+            # Log model attributes that might be dictionaries or complex objects
+            if hasattr(self.model, 'embedding'):
+                params_to_log["embedding_func"] = self.model.embedding.get("func").__name__ if self.model.embedding.get("func") else None
+                # Log embedding parameters if they exist
+                if self.model.embedding.get("func_params"):
+                    for key, value in self.model.embedding.get("func_params").items():
+                        if isinstance(value, (str, int, float, bool)) or value is None:
+                            params_to_log[f"embedding_{key}"] = value
+            
+            if hasattr(self.model, 'variational'):
+                params_to_log["circuit_func"] = self.model.variational.get("func").__name__ if self.model.variational.get("func") else None
+                # Log circuit parameters if they exist
+                if self.model.variational.get("func_params"):
+                    for key, value in self.model.variational.get("func_params").items():
+                        if isinstance(value, (str, int, float, bool)) or value is None:
+                            params_to_log[f"circuit_{key}"] = value
+            
+            if hasattr(self.model, 'measurement'):
+                params_to_log["measurement_func"] = self.model.measurement.get("func").__name__ if self.model.measurement.get("func") else None
+                # Log measurement parameters if they exist
+                if self.model.measurement.get("func_params"):
+                    for key, value in self.model.measurement.get("func_params").items():
+                        if isinstance(value, (str, int, float, bool)) or value is None:
+                            params_to_log[f"measurement_{key}"] = value
+            
+            # Log additional model attributes
+            if hasattr(self.model, 'dataset'):
+                params_to_log["dataset"] = self.model.dataset
+            
+            if hasattr(self.model, 'image_size'):
+                params_to_log["image_size"] = self.model.image_size
+            
+            # Log all parameters
+            mlflow.log_params(params_to_log)
+
         for epoch in range(epochs):
             model.train()
 
@@ -153,7 +211,7 @@ class Trainer:
                 else:
                     self._early_stop_counter += 1
                     if self._early_stop_counter >= self.patience:
-                        print(f"Early stopping at epoch {epoch+1}")
+                        logger.info(f"Early stopping at epoch {epoch+1}")
                         break
             # Logging
             if self.log:
@@ -165,9 +223,9 @@ class Trainer:
                 mlflow.log_metric("train_loss", train_loss, step=epoch)
                 mlflow.log_metric("val_loss", val_loss, step=epoch)
         
-            print(f"Epoch [{epoch+1}/{epochs}]: "
-                f"Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.2f}%, "
-                f"Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.2f}%")
+            logger.debug(f"Epoch [{epoch+1}/{epochs}]: "
+                         f"Train Loss = {train_loss:.4f}, Train Acc = {train_acc:.2f}%, "
+                         f"Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.2f}%")
 
         mlflow.end_run()
 

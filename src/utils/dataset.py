@@ -10,6 +10,7 @@ import numpy as np
 import collections
 import random
 import pandas as pd
+from loguru import logger
 
 class EuroSAT:
     def __init__(self, root="dataset/EuroSAT_RGB", image_size=64, batch_size=256,
@@ -43,17 +44,17 @@ class EuroSAT:
         zip_path = "dataset/EuroSAT_RGB.zip"
         
         url = "https://zenodo.org/records/7711810/files/EuroSAT_RGB.zip?download=1"
-        print("Downloading EuroSAT dataset...")
+        logger.info("Downloading EuroSAT dataset...")
         response = requests.get(url)
         with open(zip_path, 'wb') as f:
             f.write(response.content)
         
-        print("Extracting dataset...")
+        logger.info("Extracting dataset...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall("dataset")
         
         os.remove(zip_path)
-        print("Dataset ready!")
+        logger.info("Dataset ready!")
 
     def get_loaders(self):
         dataset = torchvision.datasets.ImageFolder(root=self.root, transform=self.transform)
@@ -135,9 +136,9 @@ class EuroSAT:
         else:
             targets = dataset.targets
         class_counts = collections.Counter(targets)
-        print(f"\nClass distribution in {set_type} set:")
+        logger.trace(f"\nClass distribution in {set_type} set:")
         for label in sorted(class_counts.keys()):
-            print(f"Class {label}: {class_counts[label]}")
+            logger.trace(f"Class {label}: {class_counts[label]}")
 
 
 class DeepSatCSV(Dataset):
