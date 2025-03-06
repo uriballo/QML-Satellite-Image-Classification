@@ -143,16 +143,20 @@ class EuroSAT:
 
 class DeepSatCSV(Dataset):
     def __init__(self, x_file, y_file, transform=None, max_samples=None, target_size=None):
-        self.X = pd.read_csv(x_file, header=None).values
-        self.y = pd.read_csv(y_file, header=None).values
         self.transform = transform
+        self.image_size = 28
+        self.target_size = target_size if target_size else 28
+        
+        self.X = np.load(x_file).astype(np.float32) / 255.0
+        self.y = np.load(y_file)
 
-        self.X = self.X.astype(np.float32) / 255.0
+        if self.y.shape[1] > 1:  
+            self.y = np.argmax(self.y, axis=1)
+            
+        self.X = self.X.reshape((-1, 4, 28, 28))
 
-        self.y = np.argmax(self.y, axis=1)
-
-        num_samples = self.X.shape[0]
-        self.X = self.X.reshape((num_samples, 4, 28, 28))
+        if max_samples:
+            self.X, self.y = self.X[:max_samples], self.y[:max_samples]
 
         self.balance_classes()
 
