@@ -4,6 +4,7 @@ import zipfile
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset, Dataset, TensorDataset
 from sklearn.model_selection import train_test_split
 import numpy as np
@@ -146,26 +147,19 @@ class DeepSatCSV(Dataset):
         self.transform = transform
         self.image_size = 28
         self.target_size = target_size if target_size else 28
-        
+
         self.X = np.load(x_file).astype(np.float32) / 255.0
         self.y = np.load(y_file)
 
         if self.y.shape[1] > 1:  
             self.y = np.argmax(self.y, axis=1)
-            
+
         self.X = self.X.reshape((-1, 4, 28, 28))
 
         if max_samples:
             self.X, self.y = self.X[:max_samples], self.y[:max_samples]
 
         self.balance_classes()
-
-        if max_samples is not None:
-            self.X = self.X[:max_samples]
-            self.y = self.y[:max_samples]
-
-        self.image_size = 28
-        self.target_size = target_size if target_size else 28
 
     def balance_classes(self):
         unique_classes, class_counts = np.unique(self.y, return_counts=True)
@@ -271,7 +265,7 @@ def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size,
             y_test_file = path + "y_test_sat4.npy"
             
         elif dataset == "DeepSat6":
-            path = "dataset/DeepSat6"
+            path = "dataset/DeepSat6/"
             
             if not os.path.exists(path + "X_train_sat6.npy"):
                 print("Transforming .csv into .npy (just the first time)...")
@@ -299,9 +293,9 @@ def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size,
             raise ValueError("Invalid dataset. Accepted values are 'EuroSAT', 'DeepSat4' or 'DeepSat6'")
             
         max_train_samples = limit
-        max_test_samples = limit
+        max_test_samples = limit  
         
-        train_dataset = DeepSatCSV(x_train_file, y_train_file, max_samples=max_train_samples)
-        test_dataset = DeepSatCSV(x_test_file, y_test_file, max_samples=max_test_samples)
+        train_dataset = DeepSatCSV(x_train_file, y_train_file, max_samples=max_train_samples, target_size=image_size)
+        test_dataset = DeepSatCSV(x_test_file, y_test_file, max_samples=max_test_samples, target_size=image_size)
 
         return DataLoader(train_dataset, batch_size=32, shuffle=True), DataLoader(test_dataset, batch_size=32, shuffle=False)
