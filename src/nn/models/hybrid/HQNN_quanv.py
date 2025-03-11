@@ -55,7 +55,7 @@ class FlexHybridCNN(nn.Module):
                 if self.image_size == 16:
                     self.kernel_size_2 = 21
                 if self.qkernel_shape == 3:
-                    self.in_channels_2, self.kernel_size_2 = 36, 26
+                    self.in_channels_2, self.kernel_size_2 = 36, 20
             else:
                 self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 4, 32, 32, 27
                 if self.image_size == 16:
