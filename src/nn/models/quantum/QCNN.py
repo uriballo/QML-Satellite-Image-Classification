@@ -2,32 +2,32 @@ import torch
 import torch.nn as nn
 import pennylane as qml
 
+from src.nn.encodings.pennylane_templates import amplitude_embedding
+from src.utils.reshape_data import ReshapeDATA
+
 import sys
 import os
-
-class DefaultReshaper:
-    def __init__(self):
-        self.reshape = self._flatten
-    
-    def _flatten(self,x):
-        return x.reshape(x.shape[0],-1)
         
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 torch.set_default_device(device)
 
 class QuantumCircuitModel(nn.Module):
-    def __init__(self, n_wires,embedding, circuit=None, measurement=None, params=None, weight_shapes=None,reshaper=None, qdevice_kwargs=None):
+    def __init__(self, n_wires,embedding, circuit=None, measurement=None, params=None, 
+                 weight_shapes=None,reshaper=None, qdevice_kwargs=None):
         super(QuantumCircuitModel, self).__init__()
         self.n_wires = n_wires
-        self.embedding = embedding
-        self.circuit = circuit
+        self.embedding = embedding["func"] or amplitude_embedding
+        self.embedding_params = embedding["func_params"] or {}
+        self.circuit = circuit["func"]
+        self.circuit_params = circuit["func_params"] or None
         self.params = params or {}
         self.weight_shapes = weight_shapes or {}
         self.qdevice_kwargs = qdevice_kwargs or {}
         self.torch_device = device
-        self.measurement = measurement
-        self.reshaper = reshaper or DefaultReshaper()
+        self.measurement = measurement["func"] 
+        self.measurement_params = measurement["func_params"] or {}
+        self.reshaper = reshaper or ReshapeDATA(wires=range(n_wires),params={'structure':'flat'})
         
         qml_device_name = self.qdevice_kwargs.pop('qml_device_name', 'default.qubit')
         self.qml_device = qml.device(
@@ -46,15 +46,15 @@ class QuantumCircuitModel(nn.Module):
         params = self.params
 
         # Embedding block
-        self.embedding(inputs, wires, params.get('embedding', {}))
+        self.embedding(inputs, wires, self.embedding_params)
 
         # Circuit block
-        params_circuit = params.get('circuit', {})
+        params_circuit = self.circuit_params
         params_circuit['weights'] = weights
         self.circuit(wires,params_circuit)
 
         # Measurement block
-        return self.measurement(wires, params.get('measurement', {}))
+        return self.measurement(wires, self.measurement_params)
 
     def forward(self,x):
         x = x.to(self.torch_device)
