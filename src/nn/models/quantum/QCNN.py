@@ -21,7 +21,6 @@ class QuantumCircuitModel(nn.Module):
         self.embedding_params = embedding["func_params"] or {}
         self.circuit = circuit["func"]
         self.circuit_params = circuit["func_params"] or None
-        self.params = params or {}
         self.weight_shapes = weight_shapes or {}
         self.qdevice_kwargs = qdevice_kwargs or {}
         self.torch_device = device
@@ -43,7 +42,6 @@ class QuantumCircuitModel(nn.Module):
         
     def quantum_circuit(self, inputs,weights):
         wires = range(self.n_wires)
-        params = self.params
 
         # Embedding block
         self.embedding(inputs, wires, self.embedding_params)
