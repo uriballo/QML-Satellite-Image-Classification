@@ -60,9 +60,11 @@ class FRQI_MC(Operation):
     num_wires = AnyWires
     grad_method = None
 
-    def __init__(self, image, wires=None,img_pixels=8, id=None):
+    def __init__(self, image, wires=None,params={}, id=None):
         shape = qml.math.shape(image)[-1:]
         n_features = shape[0]
+
+        img_pixels = params.get('img_pixels', 8)
          
         self.image = image
         self.img_pixels = img_pixels
@@ -76,6 +78,10 @@ class FRQI_MC(Operation):
         # add batch dimension if not present
         if qml.math.ndim(features) == 3:
             features = qml.math.expand_dims(features, axis=0)
+
+        # add channel dimension if not present
+        if qml.math.ndim(features) == 2:
+            features = features.reshape((features.shape[0], 3, img_pixels, img_pixels))
 
         # initial hadamard operations
         ops = []
