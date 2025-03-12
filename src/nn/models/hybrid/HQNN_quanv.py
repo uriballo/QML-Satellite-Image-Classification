@@ -10,14 +10,17 @@ class FlexHybridCNN(nn.Module):
     A flexible hybrid CNN model that can optionally use a QuanvLayer or 
     a classical convolution layer as the first convolutional operation.
     Args:
+        embedding_params (dict): Collects embedding type and its params.
+        variational_params (dict): Collects variational circuit type and its params.
+        measurement_params (dict): Collects measurement type and its params.
         n_classes (int): Number of output classes.
         use_quantum (bool): If True, apply QuanvLayer as the first layer; otherwise classical.
         qkernel_shape (int): Dimension for the quantum patch size.
         n_filters_1 (int): Number of filters in the first convolution layer (or output channels for Quanv).
         fc_hidden_dim (int): Dimension of the hidden FC layer.
-        lr (float): Learning rate.
         epochs (int): Number of training epochs.
-        quanv_params (dict): Parameters for QuanvLayer (embedding, circuit, measurement, trainable, random_params, etc.).
+        dataset (str): Name of the dataset used.
+        image_size (int): Dimensions of the images.
     """
     
     def __init__(self,
@@ -48,22 +51,17 @@ class FlexHybridCNN(nn.Module):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
         if (self.dataset == "DeepSat4" or self.dataset == "DeepSat6"):
             if use_quantum:
-                self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 3, 16, 7, 27
-                if self.image_size == 16:
-                    self.kernel_size_2 = 21
-                if self.qkernel_shape == 3:
-                    self.in_channels_2, self.kernel_size_2 = 36, 20
+                self.in_channels_1, self.in_channels_2 = 4, 4 * self.qkernel_shape**2
             else:
-                self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 4, 32, 32, 27
-                if self.image_size == 16:
-                    self.kernel_size_1 = 16
-                    self.kernel_size_2 = 17
+                self.in_channels_1, self.in_channels_2 = 4, 12
         elif self.dataset == "EuroSAT":
-            self.in_channels_1, self.in_channels_2, self.kernel_size_1, self.kernel_size_2 = 3, 3 * self.qkernel_shape**2, 7, 7
+            self.in_channels_1, self.in_channels_2 = 3, 3 * self.qkernel_shape**2
+        else:
+            raise ValueError("Dataset not supported. Try with 'EuroSAT', 'DeepSat4' or 'DeepSat6'")
 
+        self.kernel_size = 3
 
         # Initialize the first layer
         if self.use_quantum:
@@ -84,7 +82,9 @@ class FlexHybridCNN(nn.Module):
             self.conv1_classical = nn.Conv2d(
                 in_channels = self.in_channels_1,
                 out_channels = self.n_filters_1,
-                kernel_size = self.kernel_size_1
+                kernel_size = self.kernel_size,
+                stride = 2,
+                padding = (self.kernel_size // 2)
             ).to(self.device)
     
         # Second convolution
@@ -94,8 +94,9 @@ class FlexHybridCNN(nn.Module):
         self.conv2 = nn.Conv2d(
             in_channels = self.in_channels_2,
             out_channels = self.n_filters_1,
-            kernel_size = self.kernel_size_2,
-            padding = (self.kernel_size_1 // 2), # example: same-ish padding
+            kernel_size = self.kernel_size,
+            stride = 2,
+            padding = (self.kernel_size // 2), # example: same-ish padding
         ).to(self.device)
 
         # We define the linear layers later once we know the shape after conv2
