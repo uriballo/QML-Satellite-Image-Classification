@@ -14,7 +14,7 @@ import pandas as pd
 from loguru import logger
 
 class EuroSAT:
-    def __init__(self, root="dataset/EuroSAT_RGB", image_size=64, batch_size=256,
+    def __init__(self, root="../dataset/EuroSAT_RGB", image_size=64, batch_size=256,
                  test_size=0.2, random_state=42, examples_per_class=1000,
                  allowed_classes=None, output='np'):
         self.root = root
@@ -41,8 +41,8 @@ class EuroSAT:
         ])
 
     def _download_and_extract_dataset(self):
-        os.makedirs("dataset", exist_ok=True)
-        zip_path = "dataset/EuroSAT_RGB.zip"
+        os.makedirs("../dataset", exist_ok=True)
+        zip_path = "../dataset/EuroSAT_RGB.zip"
         
         url = "https://zenodo.org/records/7711810/files/EuroSAT_RGB.zip?download=1"
         logger.info("Downloading EuroSAT dataset...")
@@ -73,8 +73,8 @@ class EuroSAT:
         train_set = Subset(dataset.dataset if isinstance(dataset, Subset) else dataset, train_indices)
         val_set = Subset(dataset.dataset if isinstance(dataset, Subset) else dataset, val_indices)
 
-        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True, num_workers=4)
-        val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False, num_workers=4)
+        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True, num_workers = 4)#generator=torch.Generator(device='cuda'))
+        val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False, num_workers = 4)#generator=torch.Generator(device='cuda'))
 
         self._print_class_counts(train_set, "train")
         self._print_class_counts(val_set, "validation")
@@ -144,11 +144,12 @@ class EuroSAT:
 
 class DeepSatCSV(Dataset):
     def __init__(self, x_file, y_file, transform=None, limit=None, target_size=None):
+
+        
         self.transform = transform
         self.image_size = 28
         self.target_size = target_size if target_size else 28
 
-        # Cargar desde archivos .npy
         self.X = np.load(x_file).astype(np.float32) / 255.0
         self.y = np.load(y_file)
 
@@ -237,7 +238,7 @@ def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size,
         if dataset == "DeepSat4":
             path = "../dataset/DeepSat4/"
             if not os.path.exists(path + "X_train_sat4.npy"):
-                print("Transforming .csv into .npy (just the first time)...")
+                logger.info("Transforming .csv into .npy (just the first time)...")
                 x_train_file = path + "X_train_sat4.csv"
                 y_train_file = path + "y_train_sat4.csv"
                 x_test_file = path + "X_test_sat4.csv"
@@ -261,7 +262,7 @@ def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size,
         elif dataset == "DeepSat6":
             path = "../dataset/DeepSat6/"
             if not os.path.exists(path + "X_train_sat6.npy"):
-                print("Transforming .csv into .npy (just the first time)...")
+                logger.info("Transforming .csv into .npy (just the first time)...")
                 x_train_file = path + "X_train_sat6.csv"
                 y_train_file = path + "y_train_sat6.csv"
                 x_test_file = path + "X_test_sat6.csv"
@@ -285,8 +286,8 @@ def load_dataset(dataset, output, limit, allowed_classes, image_size, test_size,
         else:
             raise ValueError("Invalid dataset. Accepted values are 'EuroSAT', 'DeepSat4' or 'DeepSat6'")
             
-        train_samples = int(0.8 * limit)
-        test_samples = int(0.2 * limit)
+        train_samples = int((1-test_size) * limit)
+        test_samples = int(test_size * limit)
 
         train_dataset = DeepSatCSV(x_train_file, y_train_file, limit=train_samples, target_size=image_size)
         test_dataset = DeepSatCSV(x_test_file, y_test_file, limit=test_samples, target_size=image_size)
