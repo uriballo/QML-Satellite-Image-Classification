@@ -163,3 +163,5 @@ cython_debug/
 
 dataset/
 mlruns/
+
+notebooks/fully_quantum_qcnn.ipynb
