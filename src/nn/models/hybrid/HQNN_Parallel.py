@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+import math
+from src.nn.encodings.pennylane_templates import amplitude_embedding
 from src.nn.qlayers.quantum_linear import QuantumLinear
 
 class HQNN_Parallel(nn.Module):
@@ -44,18 +46,23 @@ class HQNN_Parallel(nn.Module):
         else:
             raise ValueError("Unsupported input size. Use 32 or 16.")
 
-
         num_qubits = variational_params["func_params"]["weight_shapes"]["weights"][1]
-        self.qfc = QuantumLinear(in_features=feature_dims,
-                                 out_features=feature_dims,
-                                 num_qubits_per_circuit=num_qubits,
-                                 embedding=embedding_params,
-                                 circuit=variational_params,
-                                 measurement=measurement_params)
 
-        self.fc1 = nn.Linear(feature_dims, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, n_classes)
+        if use_quantum:
+            out_features = (feature_dims // (2 ** num_qubits)) * num_qubits if embedding_params[
+                                                                                   "func"] is amplitude_embedding else feature_dims
+            self.qfc = QuantumLinear(in_features=feature_dims,
+                                     out_features=feature_dims,
+                                     num_qubits_per_circuit=num_qubits,
+                                     embedding=embedding_params,
+                                     circuit=variational_params,
+                                     measurement=measurement_params)
+        else:
+            out_features = feature_dims
+
+        self.fc1 = nn.Linear(out_features, out_features)
+        self.fc2 = nn.Linear(out_features, out_features//2)
+        self.fc3 = nn.Linear(out_features//2, n_classes)
 
     def forward(self, x):
         # Feature extraction
