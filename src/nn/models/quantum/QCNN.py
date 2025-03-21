@@ -58,4 +58,9 @@ class QuantumCircuitModel(nn.Module):
         x = x.to(self.torch_device)
         x = self.reshaper.reshape(x)
 
-        return self.qlayer(x)
+        x = self.qlayer(x)
+
+        if self.measurement.__name__ == 'probs_measurement':
+            return x
+
+        return torch.softmax(4*x, dim=1)
