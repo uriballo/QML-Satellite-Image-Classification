@@ -12,16 +12,24 @@ class HQNN_Parallel(nn.Module):
                  measurement_params,
                  n_classes=10,
                  input_size=32,
-                 use_quantum=True,):
+                 use_quantum=True,
+                 dataset="EuroSAT"):
         super(HQNN_Parallel, self).__init__()
 
         base_channels = 6
         self.use_quantum = use_quantum
 
+        if dataset == "DeepSat4" or dataset == "DeepSat6":
+            in_channels = 4
+        elif dataset == "EuroSAT":
+            in_channels = 3
+        else:
+            raise ValueError("Dataset not supported. Try with 'EuroSAT', 'DeepSat4' or 'DeepSat6'")
+
         # Feature extractor with depth based on input size
         if input_size == 32:
             self.feature_extractor = nn.Sequential(
-                nn.Conv2d(3, base_channels, kernel_size=3, stride=1, padding=1),  # (32x32) -> (32x32)
+                nn.Conv2d(in_channels, base_channels, kernel_size=3, stride=1, padding=1),  # (32x32) -> (32x32)
                 nn.LeakyReLU(),
                 nn.Conv2d(base_channels, base_channels * 2, kernel_size=3, stride=2, padding=1),  # (32x32) -> (16x16)
                 nn.LeakyReLU(),
@@ -34,7 +42,7 @@ class HQNN_Parallel(nn.Module):
 
         elif input_size == 16:
             self.feature_extractor = nn.Sequential(
-                nn.Conv2d(3, base_channels, kernel_size=3, stride=1, padding=1),  # (16x16) -> (16x16)
+                nn.Conv2d(in_channels, base_channels, kernel_size=3, stride=1, padding=1),  # (16x16) -> (16x16)
                 nn.LeakyReLU(),
                 nn.Conv2d(base_channels, base_channels * 2, kernel_size=3, stride=2, padding=1),  # (16x16) -> (8x8)
                 nn.LeakyReLU(),
