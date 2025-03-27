@@ -48,7 +48,7 @@ def two_kernels(wires,params):
     # get nb parameters
     nb_params_total,params_per_layer = get_num_params_two_kernels(wires,params)
 
-    weights = params.get('weights',torch.rand(nb_params_total, device = device))
+    weights = params.get('weights',torch.rand(nb_params_total, device = device)) * 2* torch.pi - torch.pi
 
     traced_out_qubits = []
     for layer in range(1,layers+1):
