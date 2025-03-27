@@ -15,9 +15,9 @@ class QuantumLinear(nn.Module):
                  in_features,
                  out_features,
                  num_qubits_per_circuit,
-                 embedding = angle_embedding,
-                 circuit = default_circuit,
-                 measurement = default_measurement,
+                 embedding=angle_embedding,
+                 circuit=default_circuit,
+                 measurement=default_measurement,
                  params=None):
         super(QuantumLinear, self).__init__()
 
@@ -45,23 +45,29 @@ class QuantumLinear(nn.Module):
 
             return self.measurement(wires, self.measurement_params)
 
-        # refactor logic
-        if self.embedding is angle_embedding or self.embedding is custom_iqp_embedding or self.embedding is waterfall_embedding:
-            assert in_features % self.num_qubits == 0, ("The number of input features should be divisible by the number of "
-                                                   "qubits per circuit.")
-            self.n_circuits = in_features // self.num_qubits
-            self.circuits = nn.ModuleList([
-                qml.qnn.TorchLayer(unit_circuit, self.circuit_params["weight_shapes"]) for _ in range(self.n_circuits)
-            ])
+        # Determine the number of input features per circuit.
+        if self.embedding in (angle_embedding, custom_iqp_embedding, waterfall_embedding):
+            assert in_features % self.num_qubits == 0, (
+                "The number of input features should be divisible by the number of qubits per circuit."
+            )
+            self.input_per_circuit = self.num_qubits
         elif self.embedding is amplitude_embedding:
-            self.n_circuits = in_features // 2 ** self.num_qubits
-            self.circuits = nn.ModuleList([
-                qml.qnn.TorchLayer(unit_circuit, self.circuit_params["weight_shapes"]) for _ in range(self.n_circuits)
-            ])
+            assert in_features % (2**self.num_qubits) == 0, (
+                "The number of input features should be divisible by 2^(number of qubits per circuit)."
+            )
+            self.input_per_circuit = 2 ** self.num_qubits
         else:
-            ValueError("Embedding not recognized use either `n` or `2n`.") 
+            raise ValueError("Embedding not recognized; use either `n` or `2n`.")
+
+        self.n_circuits = in_features // self.input_per_circuit
+        self.circuits = nn.ModuleList([
+            qml.qnn.TorchLayer(unit_circuit, self.circuit_params["weight_shapes"])
+            for _ in range(self.n_circuits)
+        ])
 
     def forward(self, x):
-        x = x.view(x.shape[0], self.n_circuits, self.num_qubits)
+        # Reshape such that each circuit gets self.input_per_circuit features.
+        x = x.view(x.shape[0], self.n_circuits, self.input_per_circuit)
+        # Apply each circuit on its corresponding slice
         x = torch.cat([circ(x[:, i, :]) for i, circ in enumerate(self.circuits)], dim=1)
         return x

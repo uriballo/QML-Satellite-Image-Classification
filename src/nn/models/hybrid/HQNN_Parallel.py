@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+import math
+from src.nn.encodings.pennylane_templates import amplitude_embedding
 from src.nn.qlayers.quantum_linear import QuantumLinear
 
 class HQNN_Parallel(nn.Module):
@@ -10,16 +12,24 @@ class HQNN_Parallel(nn.Module):
                  measurement_params,
                  n_classes=10,
                  input_size=32,
-                 use_quantum=True,):
+                 use_quantum=True,
+                 dataset="EuroSAT"):
         super(HQNN_Parallel, self).__init__()
 
         base_channels = 6
         self.use_quantum = use_quantum
 
+        if dataset == "DeepSat4" or dataset == "DeepSat6":
+            in_channels = 4
+        elif dataset == "EuroSAT":
+            in_channels = 3
+        else:
+            raise ValueError("Dataset not supported. Try with 'EuroSAT', 'DeepSat4' or 'DeepSat6'")
+
         # Feature extractor with depth based on input size
         if input_size == 32:
             self.feature_extractor = nn.Sequential(
-                nn.Conv2d(3, base_channels, kernel_size=3, stride=1, padding=1),  # (32x32) -> (32x32)
+                nn.Conv2d(in_channels, base_channels, kernel_size=3, stride=1, padding=1),  # (32x32) -> (32x32)
                 nn.LeakyReLU(),
                 nn.Conv2d(base_channels, base_channels * 2, kernel_size=3, stride=2, padding=1),  # (32x32) -> (16x16)
                 nn.LeakyReLU(),
@@ -32,7 +42,7 @@ class HQNN_Parallel(nn.Module):
 
         elif input_size == 16:
             self.feature_extractor = nn.Sequential(
-                nn.Conv2d(3, base_channels, kernel_size=3, stride=1, padding=1),  # (16x16) -> (16x16)
+                nn.Conv2d(in_channels, base_channels, kernel_size=3, stride=1, padding=1),  # (16x16) -> (16x16)
                 nn.LeakyReLU(),
                 nn.Conv2d(base_channels, base_channels * 2, kernel_size=3, stride=2, padding=1),  # (16x16) -> (8x8)
                 nn.LeakyReLU(),
@@ -44,18 +54,23 @@ class HQNN_Parallel(nn.Module):
         else:
             raise ValueError("Unsupported input size. Use 32 or 16.")
 
-
         num_qubits = variational_params["func_params"]["weight_shapes"]["weights"][1]
-        self.qfc = QuantumLinear(in_features=feature_dims,
-                                 out_features=feature_dims,
-                                 num_qubits_per_circuit=num_qubits,
-                                 embedding=embedding_params,
-                                 circuit=variational_params,
-                                 measurement=measurement_params)
 
-        self.fc1 = nn.Linear(feature_dims, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, n_classes)
+        if use_quantum:
+            out_features = (feature_dims // (2 ** num_qubits)) * num_qubits if embedding_params[
+                                                                                   "func"] is amplitude_embedding else feature_dims
+            self.qfc = QuantumLinear(in_features=feature_dims,
+                                     out_features=feature_dims,
+                                     num_qubits_per_circuit=num_qubits,
+                                     embedding=embedding_params,
+                                     circuit=variational_params,
+                                     measurement=measurement_params)
+        else:
+            out_features = feature_dims
+
+        self.fc1 = nn.Linear(out_features, out_features)
+        self.fc2 = nn.Linear(out_features, out_features//2)
+        self.fc3 = nn.Linear(out_features//2, n_classes)
 
     def forward(self, x):
         # Feature extraction
