@@ -56,7 +56,7 @@ def R_i_mat(theta_R,theta_G,theta_B,i,wires):
                                       control_wires=wires[3:],control_values=dec2bin(i,n))
 
 class FRQI_MC(Operation):
-    num_params = 1
+    num_params = 0
     num_wires = AnyWires
     grad_method = None
 
@@ -68,12 +68,15 @@ class FRQI_MC(Operation):
          
         self.image = image
         self.img_pixels = img_pixels
-        self._hyperparameters = {'img_pixels': img_pixels}
-        super().__init__(image, wires=wires, id=id)
+        self._hyperparameters = {'img_pixels': img_pixels,'image':image}
+        super().__init__(wires, id=id)
 
     
     @staticmethod
-    def compute_decomposition(features, wires,img_pixels):
+    def compute_decomposition(*params, wires,**hyperparameters):
+        
+        features = hyperparameters.get('image')
+        img_pixels = hyperparameters.get('img_pixels')
 
         # add batch dimension if not present
         if qml.math.ndim(features) == 3:
@@ -94,9 +97,3 @@ class FRQI_MC(Operation):
                 ops.append(R_i_mat(features[:,0,j,k],features[:,1,j,k],features[:,2,j,k],i,wires))
                 i += 1
         return ops
-    
-    # def expand(self):
-    #     with qml.tape.QuantumTape() as tape:
-    #         for feature in self.image:
-    #             FRQI_MC.compute_decomposition(feature, wires=self.wires,img_pixels=self.img_pixels)
-    #     return tape
