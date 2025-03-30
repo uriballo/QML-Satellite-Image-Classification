@@ -165,3 +165,4 @@ dataset/
 mlruns/
 
 notebooks/fully_quantum_qcnn.ipynb
+notebooks/amplitud_embedding_params.py

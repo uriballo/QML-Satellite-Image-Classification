@@ -41,7 +41,7 @@ def one_kernel(wires,params):
     # get nb parameters
     nb_params_total,params_per_layer = get_num_params_one_kernel(wires,params)
 
-    weights = params.get('weights',torch.rand(nb_params_total, device = device))
+    weights = params.get('weights',torch.rand(nb_params_total, device = device)) * 2* torch.pi - torch.pi
     
     traced_out_qubits = []
     qubit_i0 = 0

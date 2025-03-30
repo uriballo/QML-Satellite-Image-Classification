@@ -20,7 +20,7 @@ def simplified_two_design(wires,params):
     nb_params_total,_ = get_num_params_simplified_two_design(wires,params)
 
     # fetch weights
-    weights = params.get('weights',torch.rand(nb_params_total, device = device))
+    weights = params.get('weights',torch.rand(nb_params_total, device = device)) * 2* torch.pi - torch.pi
     weights_init = weights[:len(wires)]
     weights = weights[len(wires):].reshape(layers,len(wires)-1,2)
     
