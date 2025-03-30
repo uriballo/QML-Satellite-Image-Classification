@@ -45,19 +45,18 @@ class QuantumLinear(nn.Module):
 
             return self.measurement(wires, self.measurement_params)
 
+
         # Determine the number of input features per circuit.
-        if self.embedding in (angle_embedding, custom_iqp_embedding, waterfall_embedding):
-            assert in_features % self.num_qubits == 0, (
-                "The number of input features should be divisible by the number of qubits per circuit."
-            )
-            self.input_per_circuit = self.num_qubits
-        elif self.embedding is amplitude_embedding:
+        if self.embedding_params is amplitude_embedding:
             assert in_features % (2**self.num_qubits) == 0, (
                 "The number of input features should be divisible by 2^(number of qubits per circuit)."
             )
             self.input_per_circuit = 2 ** self.num_qubits
         else:
-            raise ValueError("Embedding not recognized; use either `n` or `2n`.")
+            assert in_features % self.num_qubits == 0, (
+                "The number of input features should be divisible by the number of qubits per circuit."
+            )
+            self.input_per_circuit = self.num_qubits
 
         self.n_circuits = in_features // self.input_per_circuit
         self.circuits = nn.ModuleList([
