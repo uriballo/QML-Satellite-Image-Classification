@@ -54,9 +54,12 @@ class HQNN_Parallel(nn.Module):
         else:
             raise ValueError("Unsupported input size. Use 32 or 16.")
 
-        num_qubits = variational_params["func_params"]["weight_shapes"]["weights"][1]
-
         if use_quantum:
+            weights = variational_params["func_params"]["weight_shapes"]["weights"]
+            if isinstance(weights, tuple):
+                num_qubits = weights[1]  # Extract second element
+            else:
+                num_qubits = weights  # Use directly
             out_features = (feature_dims // (2 ** num_qubits)) * num_qubits if embedding_params[
                                                                                    "func"] is amplitude_embedding else feature_dims
             self.qfc = QuantumLinear(in_features=feature_dims,
