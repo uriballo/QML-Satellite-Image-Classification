@@ -166,3 +166,5 @@ mlruns/
 
 notebooks/fully_quantum_qcnn.ipynb
 notebooks/amplitud_embedding_params.py
+notebooks/frqi_embedding_params.py
+notebooks/Test_QCNN_Eurosat4.ipynb

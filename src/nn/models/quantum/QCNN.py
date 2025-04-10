@@ -8,8 +8,7 @@ from src.utils.reshape_data import ReshapeDATA
 import sys
 import os
         
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.set_default_device(device)
 
 class QuantumCircuitModel(nn.Module):
@@ -60,7 +59,4 @@ class QuantumCircuitModel(nn.Module):
 
         x = self.qlayer(x)
 
-        if self.measurement.__name__ == 'probs_measurement':
-            return x
-
-        return torch.softmax(4*x, dim=1)
+        return 15*x
