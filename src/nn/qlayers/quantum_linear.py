@@ -45,9 +45,8 @@ class QuantumLinear(nn.Module):
 
             return self.measurement(wires, self.measurement_params)
 
-
         # Determine the number of input features per circuit.
-        if self.embedding_params is amplitude_embedding:
+        if self.embedding is amplitude_embedding:
             assert in_features % (2**self.num_qubits) == 0, (
                 "The number of input features should be divisible by 2^(number of qubits per circuit)."
             )

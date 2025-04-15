@@ -46,10 +46,8 @@ class HQNN_Parallel(nn.Module):
                 nn.LeakyReLU(),
                 nn.Conv2d(base_channels, base_channels * 2, kernel_size=3, stride=2, padding=1),  # (16x16) -> (8x8)
                 nn.LeakyReLU(),
-                nn.Conv2d(base_channels * 2, base_channels * 4, kernel_size=3, stride=2, padding=1),  # (8x8) -> (4x4)
-                nn.LeakyReLU()
             )
-            feature_dims = 4 * 4 * base_channels * 4
+            feature_dims = 8 * 8 * base_channels * 2
 
         else:
             raise ValueError("Unsupported input size. Use 32 or 16.")
@@ -60,17 +58,17 @@ class HQNN_Parallel(nn.Module):
                 num_qubits = weights[1]  # Extract second element
             else:
                 num_qubits = weights  # Use directly
+
             out_features = (feature_dims // (2 ** num_qubits)) * num_qubits if embedding_params[
                                                                                    "func"] is amplitude_embedding else feature_dims
             self.qfc = QuantumLinear(in_features=feature_dims,
-                                     out_features=feature_dims,
+                                     out_features=out_features,
                                      num_qubits_per_circuit=num_qubits,
                                      embedding=embedding_params,
                                      circuit=variational_params,
                                      measurement=measurement_params)
         else:
             out_features = feature_dims
-
         self.fc1 = nn.Linear(out_features, out_features)
         self.fc2 = nn.Linear(out_features, out_features//2)
         self.fc3 = nn.Linear(out_features//2, n_classes)
