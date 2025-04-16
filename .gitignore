@@ -162,7 +162,7 @@ cython_debug/
 #.idea/
 
 dataset/
-mlruns/
+notebooks/mlruns/
 
 notebooks/fully_quantum_qcnn.ipynb
 notebooks/amplitud_embedding_params.py
