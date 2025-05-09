@@ -1,23 +1,3 @@
-# Flowsight – lightweight Streamlit explorer for local MLflow runs
-"""
-Quick‑start
------------
-```bash
-pip install streamlit mlflow pandas plotly kaleido pyyaml
-streamlit run flowsight_streamlit_app.py
-```
-
-Why another viewer?  
-Because some older MLflow versions expose only `get_experiment()` and lack the usual `list_experiments()` helpers. This app gracefully falls back to **scanning the `mlruns` folder** itself, so it works with *any* MLflow release and even on read‑only archives you copied from another machine.
-
-Key points
-~~~~~~~~~~
-* **Automatic discovery of *all* experiments** – modern API if present, else raw‑folder scan.
-* Adds an `experiment_name` column so you can colour/facet by it or filter a single experiment for side‑by‑side charts.
-* Nine Plotly chart types, hi‑res PNG/SVG/PDF export via *kaleido*.
-* Caches heavy queries with `@st.cache_data` to keep UI snappy.
-"""
-
 from __future__ import annotations
 
 import io
