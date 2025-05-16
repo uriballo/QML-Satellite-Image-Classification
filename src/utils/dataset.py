@@ -52,7 +52,7 @@ class EuroSAT:
         
         logger.info("Extracting dataset...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall("dataset")
+            zip_ref.extractall("../dataset")
         
         os.remove(zip_path)
         logger.info("Dataset ready!")
