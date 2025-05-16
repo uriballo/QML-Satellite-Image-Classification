@@ -1,20 +1,25 @@
 # QML-Satellite-Image-Classification
-Hybrid and Pure Quantum Convolutional Neural Networks for Satellite Image Classification: A Comparative Study
+Practical insights on the effect of different encodings, ansätze and measurements in quantum and hybrid neural networks
 
 - assets
+- notebooks
 - src
   - nn
+    - ansatz
     - encodings
-    - circuit_designs
+    - measurements
     - models
       - hybrid
-        - ..
+        - HQNN_Parallel.py
+        - HQNN_quanv.py
       - quantum
-        - ..
+        - QCNN.py
+    - qlayers
+      - quantum_linear.py
+      - quanvolution.py
   - utils     
     - dataset.py
-    - training.py
-    - plotting.py  
-  - main.py
-- notebooks
+    - plotting.py
+    - reshape_data.py
+    - training.py  
 - tests 
