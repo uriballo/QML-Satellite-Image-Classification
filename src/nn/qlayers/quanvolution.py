@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import pennylane as qml
-from src.nn.ansatz.default import default_circuit
 from src.nn.encodings.pennylane_templates import amplitude_embedding
+from src.nn.ansatz.full_entanglement_circuit import full_entanglement_circuit
 from src.nn.measurements.default import default_measurement
 
 class QuanvLayer(nn.Module):
@@ -11,7 +11,7 @@ class QuanvLayer(nn.Module):
         self.qkernel_shape = qkernel_shape
         self.embedding = embedding["func"] or amplitude_embedding
         self.embedding_params = embedding["func_params"] or None
-        self.circuit = circuit["func"] or default_circuit
+        self.circuit = circuit["func"] or full_entanglement_circuit
         self.circuit_params = circuit["func_params"] or None
         self.measurement = measurement["func"] or default_measurement
         self.measurement_params = measurement["func_params"] or None
