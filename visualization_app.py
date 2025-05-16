@@ -13,7 +13,7 @@ import yaml  # for manual meta.yaml parsing when APIs are missing
 # ------------------------------------------------------------------------------------
 # App config
 # ------------------------------------------------------------------------------------
-st.set_page_config(page_title="Flowsight – MLflow Explorer", layout="wide")
+st.set_page_config(page_title="MLflow Explorer", layout="wide")
 
 # ------------------------------------------------------------------------------------
 # Sidebar – data source
@@ -29,12 +29,11 @@ mlflow.set_tracking_uri(f"file://{os.path.abspath(tracking_dir)}")
 client = mlflow.tracking.MlflowClient()
 
 # ------------------------------------------------------------------------------------
-# Experiment discovery – robust against ancient MLflow versions
+# Experiment discovery
 # ------------------------------------------------------------------------------------
 
 def discover_experiments(root: str) -> Dict[str, str]:
     """Return mapping {experiment_name: experiment_id}. Works even if APIs are absent."""
-    # 1. Newest API (MLflow ≥1.30): client.search_experiments / list_experiments
     for attr in ("list_experiments", "search_experiments"):
         if hasattr(client, attr):
             try:
@@ -44,7 +43,6 @@ def discover_experiments(root: str) -> Dict[str, str]:
             except Exception:
                 pass  # fall through to folder scan
 
-    # 2. Global helper (mlflow.search_experiments) in some versions
     if hasattr(mlflow, "search_experiments"):
         try:
             exps = mlflow.search_experiments(filter_string="")
@@ -53,7 +51,7 @@ def discover_experiments(root: str) -> Dict[str, str]:
         except Exception:
             pass
 
-    # 3. Brute‑force: parse meta.yaml files inside the tracking directory
+    # Brute‑force: parse meta.yaml files inside the tracking directory
     experiments: Dict[str, str] = {}
     for entry in os.scandir(root):
         if entry.is_dir() and entry.name.isdigit():  # each experiment dir is its id
@@ -123,7 +121,7 @@ base_map["experiment_name"] = "experiment_name"
 # ------------------------------------------------------------------------------------
 # Main UI – DataFrame explorer
 # ------------------------------------------------------------------------------------
-st.title("📊 Flowsight: MLflow result visualizer")
+st.title("MLflow result visualizer")
 
 st.subheader("DataFrame explorer")
 with st.expander("Show DataFrame", expanded=False):
