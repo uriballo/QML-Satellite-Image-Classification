@@ -27,7 +27,13 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------------------------
 # App config
 # ------------------------------------------------------------------------------------
-st.set_page_config(page_title="MLflow Explorer (Brute Force)", layout="wide")
+st.set_page_config(page_title="MLflow Explorer", layout="wide")
+
+# Initialize session state for multiple charts
+if 'num_charts' not in st.session_state:
+    st.session_state.num_charts = 1
+if 'num_epoch_charts' not in st.session_state:
+    st.session_state.num_epoch_charts = 1
 
 # ------------------------------------------------------------------------------------
 # Performance monitoring decorator
@@ -342,6 +348,55 @@ class BruteForceMLflowReader:
         return pd.DataFrame()
 
 # ------------------------------------------------------------------------------------
+# Helper function to create download buttons
+# ------------------------------------------------------------------------------------
+def create_download_buttons(fig, chart_name: str):
+    """Create PNG, PDF, and Excel download buttons for a chart"""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        png_buf = io.BytesIO()
+        fig.write_image(png_buf, format="png", width=1200, height=700, scale=2)
+        st.download_button(
+            label="📊 PNG",
+            data=png_buf.getvalue(),
+            file_name=f"{chart_name}.png",
+            mime="image/png",
+            use_container_width=True
+        )
+    
+    with col2:
+        pdf_buf = io.BytesIO()
+        fig.write_image(pdf_buf, format="pdf", width=1200, height=700, scale=2)
+        st.download_button(
+            label="📄 PDF",
+            data=pdf_buf.getvalue(),
+            file_name=f"{chart_name}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    
+    with col3:
+        # For Excel, we'll export the data used in the chart
+        if hasattr(fig, 'data') and fig.data:
+            excel_buf = io.BytesIO()
+            # Create a simple DataFrame from the first trace
+            trace_data = fig.data[0]
+            if hasattr(trace_data, 'x') and hasattr(trace_data, 'y'):
+                chart_df = pd.DataFrame({
+                    'x': trace_data.x,
+                    'y': trace_data.y
+                })
+                chart_df.to_excel(excel_buf, index=False, engine='openpyxl')
+                st.download_button(
+                    label="📈 Excel",
+                    data=excel_buf.getvalue(),
+                    file_name=f"{chart_name}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+# ------------------------------------------------------------------------------------
 # Sidebar – data source
 # ------------------------------------------------------------------------------------
 st.sidebar.header("1 · Data source")
@@ -359,7 +414,13 @@ experiments_dict = reader.list_experiments()
 experiments = {exp['name']: exp_id for exp_id, exp in experiments_dict.items()}
 
 if not experiments:
-    st.error("No experiments found in this tracking directory.")
+    st.error("🔍 **No experiments found in this tracking directory.**")
+    st.info("""
+    **Possible reasons:**
+    - The directory doesn't contain MLflow experiment folders
+    - Experiment folders don't have proper `meta.yaml` files
+    - Check if your MLflow tracking directory path is correct
+    """)
     st.stop()
 
 # Experiment selection
@@ -409,26 +470,27 @@ with st.spinner("Loading runs..."):
     df = fetch_runs_cached(exp_ids, tracking_dir, experiments)  # Pass experiments dict
     load_time = time.time() - start_time
     logger.info(f"Loaded {len(df)} runs in {load_time:.2f}s")
-    
-    # Debug info
-    if df.empty:
-        st.warning("No runs found in selected experiments. Please check:")
-        st.write("- Selected experiment IDs:", exp_ids)
-        st.write("- Tracking directory exists:", Path(tracking_dir).exists())
-        for exp_id in exp_ids:
-            exp_path = Path(tracking_dir) / exp_id
-            st.write(f"- Experiment {exp_id} path exists:", exp_path.exists())
-            if exp_path.exists():
-                run_dirs = [d for d in exp_path.iterdir() if d.is_dir() and len(d.name) == 32]
-                st.write(f"  - Number of run directories: {len(run_dirs)}")
-                if len(run_dirs) > 0:
-                    st.write(f"  - Sample run IDs: {[d.name[:8] + '...' for d in run_dirs[:3]]}")
 
 if df.empty:
-    st.warning("Selected experiments contain no runs.")
+    st.warning("📊 **No runs found in the selected experiments.**")
+    
+    with st.expander("🔍 **Diagnostic Information**", expanded=True):
+        st.markdown("**Selected Experiments:**")
+        for exp_name, exp_id in [(name, experiments[name]) for name in exp_names]:
+            exp_path = Path(tracking_dir) / exp_id
+            if exp_path.exists():
+                run_dirs = [d for d in exp_path.iterdir() if d.is_dir() and len(d.name) == 32]
+                st.markdown(f"- **{exp_name}** (ID: {exp_id}) - {len(run_dirs)} runs found")
+            else:
+                st.markdown(f"- **{exp_name}** (ID: {exp_id}) - ❌ Path not found")
+        
+        st.info("""
+        **Possible solutions:**
+        - Ensure your experiments have completed runs
+        - Check if runs have the standard MLflow structure
+        - Verify that run directories contain proper metadata files
+        """)
     st.stop()
-
-# Removed loading stats as requested
 
 # ------------------------------------------------------------------------------------
 # Process columns
@@ -611,21 +673,23 @@ base_map: Dict[str, str] = {nice(c): c for c in metric_cols + param_cols + tag_c
 base_map["experiment_name"] = "experiment_name"
 
 # ------------------------------------------------------------------------------------
-# Chart builder
+# Multiple Chart Builders
 # ------------------------------------------------------------------------------------
-st.subheader("Chart builder")
+st.subheader("📊 Chart Builder")
 
-col1, col2, col3 = st.columns(3)
+# Chart controls
+col1, col2 = st.columns([1, 1])
 with col1:
-    x_display = st.selectbox("X‑axis", list(base_map.keys()), index=0)
-with col2:
-    y_display = st.selectbox("Y‑axis", list(base_map.keys()), index=1)
-with col3:
-    color_display = st.selectbox("Color / series", ["None"] + list(base_map.keys()), index=0)
+    if st.button("➕ Add Chart", disabled=st.session_state.num_charts >= 15):
+        st.session_state.num_charts += 1
+        st.rerun()
 
-x = base_map[x_display]
-y = base_map[y_display]
-color = base_map.get(color_display) if color_display != "None" else None
+with col2:
+    if st.button("➖ Remove Chart", disabled=st.session_state.num_charts <= 1):
+        st.session_state.num_charts -= 1
+        st.rerun()
+
+st.caption(f"Charts: {st.session_state.num_charts}/15")
 
 CHART_FUNCS: Dict[str, callable] = {
     "Scatter": px.scatter,
@@ -637,297 +701,354 @@ CHART_FUNCS: Dict[str, callable] = {
     "Histogram": px.histogram,
     "ECDF": px.ecdf,
 }
-chart_type = st.selectbox("Chart type", list(CHART_FUNCS.keys()), index=0)
-fig_func = CHART_FUNCS[chart_type]
 
-plot_kw = dict(
-    data_frame=filtered,
-    x=x,
-    y=y,
-    template=plot_template,
-    title=f"{chart_type}: {y_display} vs {x_display}",
-    width=fig_width,
-    height=fig_height
-)
+# Create multiple chart builders
+for chart_idx in range(st.session_state.num_charts):
+    with st.container():
+        st.markdown(f"### Chart {chart_idx + 1}")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            x_display = st.selectbox(
+                "X‑axis", 
+                list(base_map.keys()), 
+                index=0,
+                key=f"x_axis_{chart_idx}"
+            )
+        with col2:
+            y_display = st.selectbox(
+                "Y‑axis", 
+                list(base_map.keys()), 
+                index=min(1, len(base_map) - 1),
+                key=f"y_axis_{chart_idx}"
+            )
+        with col3:
+            color_display = st.selectbox(
+                "Color / series", 
+                ["None"] + list(base_map.keys()), 
+                index=0,
+                key=f"color_{chart_idx}"
+            )
+        with col4:
+            chart_type = st.selectbox(
+                "Chart type", 
+                list(CHART_FUNCS.keys()), 
+                index=0,
+                key=f"chart_type_{chart_idx}"
+            )
 
-# Apply parameter value renaming for display if any
-if param_value_renames:
-    plot_df = filtered.copy()
-    for (p_col, old_value), new_value in param_value_renames.items():
-        if p_col in [x, y, color]:
-            plot_df[p_col] = plot_df[p_col].replace(old_value, new_value)
-    plot_kw["data_frame"] = plot_df
+        x = base_map[x_display]
+        y = base_map[y_display]
+        color = base_map.get(color_display) if color_display != "None" else None
+        fig_func = CHART_FUNCS[chart_type]
 
-if color:
-    plot_kw["color"] = color
+        plot_kw = dict(
+            data_frame=filtered,
+            x=x,
+            y=y,
+            template=plot_template,
+            title=f"{chart_type}: {y_display} vs {x_display}",
+            width=fig_width,
+            height=fig_height
+        )
 
-fig = fig_func(**plot_kw)
-fig.update_layout(font_family="Helvetica", title_font_size=20, legend_title_text=color_display if color else "")
+        # Apply parameter value renaming for display if any
+        if param_value_renames:
+            plot_df = filtered.copy()
+            for (p_col, old_value), new_value in param_value_renames.items():
+                if p_col in [x, y, color]:
+                    plot_df[p_col] = plot_df[p_col].replace(old_value, new_value)
+            plot_kw["data_frame"] = plot_df
 
-st.plotly_chart(fig, use_container_width=True)
+        if color:
+            plot_kw["color"] = color
+
+        fig = fig_func(**plot_kw)
+        fig.update_layout(
+            font_family="Helvetica", 
+            title_font_size=20, 
+            legend_title_text=color_display if color else ""
+        )
+
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_idx}")
+        
+        # Download buttons for this chart
+        create_download_buttons(fig, f"chart_{chart_idx + 1}_{chart_type.lower()}")
+        
+        st.divider()
 
 # ------------------------------------------------------------------------------------
-# Epoch-based metrics visualization (FIXED)
+# Multiple Epoch-based Metrics Visualizations
 # ------------------------------------------------------------------------------------
-st.subheader("Epoch-based Metrics Visualization")
+st.subheader("📈 Epoch-based Metrics Visualization")
+
+# Epoch chart controls
+col1, col2 = st.columns([1, 1])
+with col1:
+    if st.button("➕ Add Epoch Chart", disabled=st.session_state.num_epoch_charts >= 15):
+        st.session_state.num_epoch_charts += 1
+        st.rerun()
+
+with col2:
+    if st.button("➖ Remove Epoch Chart", disabled=st.session_state.num_epoch_charts <= 1):
+        st.session_state.num_epoch_charts -= 1
+        st.rerun()
+
+st.caption(f"Epoch Charts: {st.session_state.num_epoch_charts}/15")
 
 # Get all metric keys (without 'metrics.' prefix)
 metric_keys = [nice(m) for m in metric_cols]
 
-# Select metrics to visualize
-selected_metrics = st.multiselect(
-    "Select metrics to visualize by epoch",
-    options=metric_keys,
-    default=metric_keys[:1] if metric_keys else []
-)
-
-if selected_metrics:
-    # Add aggregation options
-    aggregation_method = st.radio(
-        "Aggregation method",
-        options=["Best run (max final value)", "Best run (min final value)", "Best run (avg value)", 
-                 "Max value per epoch", "Min value per epoch", "Average per epoch", "All runs"],
-        index=0,
-        horizontal=True,
-        help="'Best run' methods show all epochs from the run with the best final/average metric value per group"
-    )
-    
-    # Cached function for epoch data
-    @st.cache_data(show_spinner="Loading epoch metrics...", ttl=300)
-    def fetch_epoch_metrics_batch(run_info: List[Tuple[str, str]], metric_keys: List[str], 
-                                tracking_dir: str) -> pd.DataFrame:
-        """Batch load epoch metrics for multiple runs"""
-        reader = BruteForceMLflowReader(tracking_dir)
+# Create multiple epoch chart builders
+for epoch_idx in range(st.session_state.num_epoch_charts):
+    with st.container():
+        st.markdown(f"### Epoch Chart {epoch_idx + 1}")
         
-        # Prepare list of (exp_id, run_id, metric) tuples
-        run_metrics = []
-        for exp_id, run_id in run_info:
-            for metric in metric_keys:
-                run_metrics.append((exp_id, run_id, metric))
-        
-        logger.info(f"Loading {len(run_metrics)} metric histories...")
-        return reader.load_metric_histories_batch(run_metrics, max_workers=20)
-    
-    # Get run info for selected (filtered) runs only
-    run_info = [(row['experiment_id'], row['run_id']) for _, row in filtered.iterrows()]
-    
-    # Fetch epoch data
-    epoch_df = fetch_epoch_metrics_batch(run_info, selected_metrics, tracking_dir)
-    
-    if not epoch_df.empty:
-        # IMPORTANT: Merge with filtered dataframe to get parameters and experiment names
-        # This ensures we only show data for the filtered runs
-        epoch_df = epoch_df.merge(
-            filtered[['run_id', 'experiment_id', 'experiment_name'] + param_cols],
-            on=['run_id', 'experiment_id'],
-            how='inner'  # Inner join ensures we only keep epochs for filtered runs
+        # Select metrics to visualize
+        selected_metrics = st.multiselect(
+            "Select metrics to visualize by epoch",
+            options=metric_keys,
+            default=[metric_keys[0]] if metric_keys else [],
+            key=f"epoch_metrics_{epoch_idx}"
         )
-        
-        # Apply parameter value renaming to epoch data
-        for (param_col, old_value), new_value in param_value_renames.items():
-            if param_col in epoch_df.columns:
-                epoch_df[param_col] = epoch_df[param_col].replace(old_value, new_value)
-        
-        # Group by control
-        group_options = ["run_id", "experiment_name"] + [nice(p) for p in param_cols]
-        group_by = st.selectbox(
-            "Group lines by:", 
-            options=group_options,
-            index=1  # Default to experiment_name
-        )
-        
-        # Convert group_by to actual column name if it's a param
-        if group_by in [nice(p) for p in param_cols]:
-            group_by_col = f"params.{group_by}"
-        else:
-            group_by_col = group_by
-        
-        # Create epoch-based visualization
-        fig = go.Figure()
-        
-        # Track which groups we're displaying for debug info
-        displayed_groups = []
-        
-        # Use epoch_df as the base plot data
-        plot_data = epoch_df
-        
-        # Apply aggregation based on method
-        if "Best run" in aggregation_method:
-            # For "best run" methods, find the best run per group and show all its epochs
-            for metric in selected_metrics:
-                metric_data = plot_data[plot_data['metric'] == metric]
-                
-                for group_val, group_data in metric_data.groupby(group_by_col):
-                    # Find the best run in this group
-                    try:
-                        if "max final" in aggregation_method:
-                            # Get final value for each run
-                            final_values = group_data.groupby('run_id')['value'].last()
-                            if final_values.empty:
-                                continue
-                            best_run_id = final_values.idxmax()
-                        elif "min final" in aggregation_method:
-                            final_values = group_data.groupby('run_id')['value'].last()
-                            if final_values.empty:
-                                continue
-                            best_run_id = final_values.idxmin()
-                        elif "avg value" in aggregation_method:
-                            # Get average value for each run
-                            avg_values = group_data.groupby('run_id')['value'].mean()
-                            if avg_values.empty:
-                                continue
-                            best_run_id = avg_values.idxmax()
-                        
-                        # Get all epochs for the best run
-                        best_run_data = group_data[group_data['run_id'] == best_run_id].sort_values('epoch')
-                        
-                        if best_run_data.empty:
-                            continue
-                    except Exception as e:
-                        logger.error(f"Error finding best run for metric {metric}: {e}")
-                        continue
-                    
-                    # Add trace for this group's best run
-                    trace_name = f"{metric} - {group_val}"
-                    fig.add_trace(go.Scatter(
-                        x=best_run_data['epoch'],
-                        y=best_run_data['value'],
-                        mode='lines+markers',
-                        name=trace_name,
-                        hovertemplate=(
-                            f"Metric: {metric}<br>"
-                            f"Group: {group_val}<br>"
-                            f"Run: {best_run_id[:8]}...<br>"
-                            "Epoch: %{x}<br>"
-                            "Value: %{y}<extra></extra>"
-                        )
-                    ))
-                    
-                    # Track displayed group info
-                    displayed_groups.append({
-                        'Metric': metric,
-                        'Group': str(group_val),
-                        'Best Run ID': best_run_id[:8] + '...',
-                        'Final Value': best_run_data['value'].iloc[-1] if len(best_run_data) > 0 else None,
-                        'Num Epochs': len(best_run_data)
-                    })
-        
-        elif aggregation_method in ["Max value per epoch", "Min value per epoch", "Average per epoch"]:
-            # Original per-epoch aggregation logic
-            for metric in selected_metrics:
-                metric_data = plot_data[plot_data['metric'] == metric]
-                
-                for group_val, group_data in metric_data.groupby(group_by_col):
-                    # Group by epoch and apply aggregation
-                    if aggregation_method == "Max value per epoch":
-                        agg_data = group_data.groupby('epoch')['value'].max().reset_index()
-                    elif aggregation_method == "Min value per epoch":
-                        agg_data = group_data.groupby('epoch')['value'].min().reset_index()
-                    elif aggregation_method == "Average per epoch":
-                        agg_data = group_data.groupby('epoch')['value'].mean().reset_index()
-                    
-                    agg_data = agg_data.sort_values('epoch')
-                    
-                    trace_name = f"{metric} - {group_val}"
-                    fig.add_trace(go.Scatter(
-                        x=agg_data['epoch'],
-                        y=agg_data['value'],
-                        mode='lines+markers',
-                        name=trace_name,
-                        hovertemplate="Epoch: %{x}<br>Value: %{y}<br>Group: " + str(group_val) + "<extra></extra>"
-                    ))
-                    
-                    # Track displayed group info
-                    num_runs = group_data['run_id'].nunique()
-                    displayed_groups.append({
-                        'Metric': metric,
-                        'Group': str(group_val),
-                        'Aggregation': aggregation_method,
-                        'Num Runs': num_runs,
-                        'Final Value': agg_data['value'].iloc[-1] if len(agg_data) > 0 else None
-                    })
-        
-        else:  # "All runs"
-            # Show all runs without aggregation
-            for metric in selected_metrics:
-                metric_data = plot_data[plot_data['metric'] == metric]
-                
-                for group_val, group_data in metric_data.groupby(group_by_col):
-                    # Plot each run separately
-                    for run_id, run_data in group_data.groupby('run_id'):
-                        run_data = run_data.sort_values('epoch')
-                        
-                        fig.add_trace(go.Scatter(
-                            x=run_data['epoch'],
-                            y=run_data['value'],
-                            mode='lines+markers',
-                            name=f"{metric} - {group_val} - {run_id[:8]}",
-                            hovertemplate=(
-                                f"Run: {run_id[:8]}...<br>"
-                                "Epoch: %{x}<br>"
-                                "Value: %{y}<extra></extra>"
-                            )
-                        ))
-                    
-                    num_runs = group_data['run_id'].nunique()
-                    if 'Metric' not in [g for g in displayed_groups if g.get('Group') == str(group_val) and g.get('Metric') == metric]:
-                        displayed_groups.append({
-                            'Metric': metric,
-                            'Group': str(group_val),
-                            'Num Runs': num_runs
-                        })
-        
-        # Update layout
-        title = f"Metrics by Epoch ({aggregation_method})"
-        fig.update_layout(
-            title=title,
-            xaxis_title="Epoch",
-            yaxis_title="Value",
-            template=plot_template,
-            legend_title=f"Metric - {group_by}",
-            width=fig_width,
-            height=fig_height,
-            font_family="Helvetica"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Debug info with group table
-        with st.expander("Debug: Displayed Groups", expanded=False):
-            if displayed_groups:
-                # Remove duplicates and create DataFrame
-                unique_groups = []
-                seen = set()
-                for g in displayed_groups:
-                    key = (g.get('Metric'), g.get('Group'))
-                    if key not in seen:
-                        seen.add(key)
-                        unique_groups.append(g)
-                
-                groups_df = pd.DataFrame(unique_groups)
-                st.dataframe(groups_df, hide_index=True)
-                
-                st.write(f"Total groups displayed: {len(unique_groups)}")
-                st.write(f"Total epoch entries in data: {len(epoch_df)}")
-                st.write(f"Unique runs in epoch data: {epoch_df['run_id'].nunique()}")
-    else:
-        st.warning("No epoch data available for the selected runs and metrics.")
 
-# ------------------------------------------------------------------------------------
-# Download
-# ------------------------------------------------------------------------------------
-st.markdown("### Export chart")
-fmt = st.selectbox("Format", ["png", "svg", "pdf"], index=0)
-
-buf = io.BytesIO()
-fig.write_image(buf, format=fmt, width=fig_width, height=fig_height, scale=2)
-
-st.download_button(
-    label=f"💾 Download {fmt.upper()}",
-    data=buf.getvalue(),
-    file_name=f"mlflow_chart.{fmt}",
-    mime="image/png" if fmt == "png" else "image/svg+xml" if fmt == "svg" else "application/pdf",
-)
+        if selected_metrics:
+            # Add aggregation options
+            aggregation_method = st.radio(
+                "Aggregation method",
+                options=["Best run (max final value)", "Best run (min final value)", "Best run (avg value)", 
+                         "Max value per epoch", "Min value per epoch", "Average per epoch", "All runs"],
+                index=0,
+                horizontal=True,
+                help="'Best run' methods show all epochs from the run with the best final/average metric value per group",
+                key=f"epoch_agg_{epoch_idx}"
+            )
+            
+            # Cached function for epoch data
+            @st.cache_data(show_spinner="Loading epoch metrics...", ttl=300)
+            def fetch_epoch_metrics_batch(run_info: List[Tuple[str, str]], metric_keys: List[str], 
+                                        tracking_dir: str) -> pd.DataFrame:
+                """Batch load epoch metrics for multiple runs"""
+                reader = BruteForceMLflowReader(tracking_dir)
+                
+                # Prepare list of (exp_id, run_id, metric) tuples
+                run_metrics = []
+                for exp_id, run_id in run_info:
+                    for metric in metric_keys:
+                        run_metrics.append((exp_id, run_id, metric))
+                
+                logger.info(f"Loading {len(run_metrics)} metric histories...")
+                return reader.load_metric_histories_batch(run_metrics, max_workers=20)
+            
+            # Get run info for selected (filtered) runs only
+            run_info = [(row['experiment_id'], row['run_id']) for _, row in filtered.iterrows()]
+            
+            # Fetch epoch data
+            epoch_df = fetch_epoch_metrics_batch(run_info, selected_metrics, tracking_dir)
+            
+            if not epoch_df.empty:
+                # IMPORTANT: Merge with filtered dataframe to get parameters and experiment names
+                epoch_df = epoch_df.merge(
+                    filtered[['run_id', 'experiment_id', 'experiment_name'] + param_cols],
+                    on=['run_id', 'experiment_id'],
+                    how='inner'
+                )
+                
+                # Apply parameter value renaming to epoch data
+                for (param_col, old_value), new_value in param_value_renames.items():
+                    if param_col in epoch_df.columns:
+                        epoch_df[param_col] = epoch_df[param_col].replace(old_value, new_value)
+                
+                # Group by control
+                group_options = ["run_id", "experiment_name"] + [nice(p) for p in param_cols]
+                group_by = st.selectbox(
+                    "Group lines by:", 
+                    options=group_options,
+                    index=1,  # Default to experiment_name
+                    key=f"epoch_group_{epoch_idx}"
+                )
+                
+                # Convert group_by to actual column name if it's a param
+                if group_by in [nice(p) for p in param_cols]:
+                    group_by_col = f"params.{group_by}"
+                else:
+                    group_by_col = group_by
+                
+                # Create epoch-based visualization
+                fig = go.Figure()
+                
+                # Track which groups we're displaying for debug info
+                displayed_groups = []
+                
+                # Use epoch_df as the base plot data
+                plot_data = epoch_df
+                
+                # Apply aggregation based on method
+                if "Best run" in aggregation_method:
+                    # For "best run" methods, find the best run per group and show all its epochs
+                    for metric in selected_metrics:
+                        metric_data = plot_data[plot_data['metric'] == metric]
+                        
+                        for group_val, group_data in metric_data.groupby(group_by_col):
+                            # Find the best run in this group
+                            try:
+                                if "max final" in aggregation_method:
+                                    # Get final value for each run
+                                    final_values = group_data.groupby('run_id')['value'].last()
+                                    if final_values.empty:
+                                        continue
+                                    best_run_id = final_values.idxmax()
+                                elif "min final" in aggregation_method:
+                                    final_values = group_data.groupby('run_id')['value'].last()
+                                    if final_values.empty:
+                                        continue
+                                    best_run_id = final_values.idxmin()
+                                elif "avg value" in aggregation_method:
+                                    # Get average value for each run
+                                    avg_values = group_data.groupby('run_id')['value'].mean()
+                                    if avg_values.empty:
+                                        continue
+                                    best_run_id = avg_values.idxmax()
+                                
+                                # Get all epochs for the best run
+                                best_run_data = group_data[group_data['run_id'] == best_run_id].sort_values('epoch')
+                                
+                                if best_run_data.empty:
+                                    continue
+                            except Exception as e:
+                                logger.error(f"Error finding best run for metric {metric}: {e}")
+                                continue
+                            
+                            # Add trace for this group's best run
+                            trace_name = f"{metric} - {group_val}"
+                            fig.add_trace(go.Scatter(
+                                x=best_run_data['epoch'],
+                                y=best_run_data['value'],
+                                mode='lines+markers',
+                                name=trace_name,
+                                hovertemplate=(
+                                    f"Metric: {metric}<br>"
+                                    f"Group: {group_val}<br>"
+                                    f"Run: {best_run_id[:8]}...<br>"
+                                    "Epoch: %{x}<br>"
+                                    "Value: %{y}<extra></extra>"
+                                )
+                            ))
+                            
+                            # Track displayed group info
+                            displayed_groups.append({
+                                'Metric': metric,
+                                'Group': str(group_val),
+                                'Best Run ID': best_run_id[:8] + '...',
+                                'Final Value': best_run_data['value'].iloc[-1] if len(best_run_data) > 0 else None,
+                                'Num Epochs': len(best_run_data)
+                            })
+                
+                elif aggregation_method in ["Max value per epoch", "Min value per epoch", "Average per epoch"]:
+                    # Original per-epoch aggregation logic
+                    for metric in selected_metrics:
+                        metric_data = plot_data[plot_data['metric'] == metric]
+                        
+                        for group_val, group_data in metric_data.groupby(group_by_col):
+                            # Group by epoch and apply aggregation
+                            if aggregation_method == "Max value per epoch":
+                                agg_data = group_data.groupby('epoch')['value'].max().reset_index()
+                            elif aggregation_method == "Min value per epoch":
+                                agg_data = group_data.groupby('epoch')['value'].min().reset_index()
+                            elif aggregation_method == "Average per epoch":
+                                agg_data = group_data.groupby('epoch')['value'].mean().reset_index()
+                            
+                            agg_data = agg_data.sort_values('epoch')
+                            
+                            trace_name = f"{metric} - {group_val}"
+                            fig.add_trace(go.Scatter(
+                                x=agg_data['epoch'],
+                                y=agg_data['value'],
+                                mode='lines+markers',
+                                name=trace_name,
+                                hovertemplate="Epoch: %{x}<br>Value: %{y}<br>Group: " + str(group_val) + "<extra></extra>"
+                            ))
+                            
+                            # Track displayed group info
+                            num_runs = group_data['run_id'].nunique()
+                            displayed_groups.append({
+                                'Metric': metric,
+                                'Group': str(group_val),
+                                'Aggregation': aggregation_method,
+                                'Num Runs': num_runs,
+                                'Final Value': agg_data['value'].iloc[-1] if len(agg_data) > 0 else None
+                            })
+                
+                else:  # "All runs"
+                    # Show all runs without aggregation
+                    for metric in selected_metrics:
+                        metric_data = plot_data[plot_data['metric'] == metric]
+                        
+                        for group_val, group_data in metric_data.groupby(group_by_col):
+                            # Plot each run separately
+                            for run_id, run_data in group_data.groupby('run_id'):
+                                run_data = run_data.sort_values('epoch')
+                                
+                                fig.add_trace(go.Scatter(
+                                    x=run_data['epoch'],
+                                    y=run_data['value'],
+                                    mode='lines+markers',
+                                    name=f"{metric} - {group_val} - {run_id[:8]}",
+                                    hovertemplate=(
+                                        f"Run: {run_id[:8]}...<br>"
+                                        "Epoch: %{x}<br>"
+                                        "Value: %{y}<extra></extra>"
+                                    )
+                                ))
+                            
+                            num_runs = group_data['run_id'].nunique()
+                            if 'Metric' not in [g for g in displayed_groups if g.get('Group') == str(group_val) and g.get('Metric') == metric]:
+                                displayed_groups.append({
+                                    'Metric': metric,
+                                    'Group': str(group_val),
+                                    'Num Runs': num_runs
+                                })
+                
+                # Update layout
+                title = f"Metrics by Epoch ({aggregation_method}) - Chart {epoch_idx + 1}"
+                fig.update_layout(
+                    title=title,
+                    xaxis_title="Epoch",
+                    yaxis_title="Value",
+                    template=plot_template,
+                    legend_title=f"Metric - {group_by}",
+                    width=fig_width,
+                    height=fig_height,
+                    font_family="Helvetica"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True, key=f"epoch_chart_{epoch_idx}")
+                
+                # Download buttons for this epoch chart
+                create_download_buttons(fig, f"epoch_chart_{epoch_idx + 1}")
+                
+                # Debug info with group table
+                with st.expander("Debug: Displayed Groups", expanded=False):
+                    if displayed_groups:
+                        # Remove duplicates and create DataFrame
+                        unique_groups = []
+                        seen = set()
+                        for g in displayed_groups:
+                            key = (g.get('Metric'), g.get('Group'))
+                            if key not in seen:
+                                seen.add(key)
+                                unique_groups.append(g)
+                        
+                        groups_df = pd.DataFrame(unique_groups)
+                        st.dataframe(groups_df, hide_index=True)
+                        
+                        st.write(f"Total groups displayed: {len(unique_groups)}")
+                        st.write(f"Total epoch entries in data: {len(epoch_df)}")
+                        st.write(f"Unique runs in epoch data: {epoch_df['run_id'].nunique()}")
+            else:
+                st.warning("No epoch data available for the selected runs and metrics.")
+        
+        st.divider()
 
 # ------------------------------------------------------------------------------------
 # Cache management
