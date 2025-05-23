@@ -579,7 +579,7 @@ with st.sidebar.expander("Plot Style & Size", expanded=False):
 # ------------------------------------------------------------------------------------
 # Main UI
 # ------------------------------------------------------------------------------------
-st.title("MLflow Result Visualizer (Brute Force)")
+st.title("MLflow result visualizer")
 
 # DataFrame explorer
 st.subheader("DataFrame explorer")
