@@ -165,6 +165,8 @@ dataset/
 notebooks/mlruns/
 mlruns/
 mlruns 2/
+mlruns 3/
+mlruns 4/
 
 notebooks/fully_quantum_qcnn.ipynb
 notebooks/amplitud_embedding_params.py

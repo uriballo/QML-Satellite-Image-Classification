@@ -11,8 +11,10 @@ from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 import yaml
+import numpy as np
 
 # ------------------------------------------------------------------------------------
 # Logging Configuration - Console Only
@@ -93,7 +95,7 @@ class BruteForceMLflowReader:
                             experiments[exp_id] = {
                                 'experiment_id': exp_id,
                                 'name': f'Experiment {exp_id}',
-                                'lifecycle_stage': 'active'
+                                'lifestyle_stage': 'active'
                             }
         except Exception as e:
             logger.error(f"Error listing experiments: {e}")
@@ -348,8 +350,72 @@ class BruteForceMLflowReader:
         return pd.DataFrame()
 
 # ------------------------------------------------------------------------------------
-# Helper function to create download buttons
+# Helper functions
 # ------------------------------------------------------------------------------------
+def get_display_name(original_col: str, tag_renames: Dict[str, str]) -> str:
+    """Get the display name for a column, applying renames if available"""
+    if original_col in tag_renames:
+        return tag_renames[original_col]
+    
+    # Remove prefix and return clean name
+    if "." in original_col:
+        return original_col.split(".", 1)[1]
+    return original_col
+
+def create_grouped_histogram(df: pd.DataFrame, x_col: str, y_col: str, color_col: str, 
+                           plot_template: str, fig_width: int, fig_height: int, 
+                           title: str) -> go.Figure:
+    """Create grouped bar chart"""
+    
+    # Get unique x values and color values
+    x_values = sorted(df[x_col].unique())
+    color_values = sorted(df[color_col].unique())
+    
+    # Create a single figure (not subplots)
+    fig = go.Figure()
+    
+    # Color palette
+    colors = px.colors.qualitative.Set1[:len(color_values)]
+    if len(color_values) > len(colors):
+        colors = colors * ((len(color_values) // len(colors)) + 1)
+    
+    # Create grouped bars
+    for j, color_val in enumerate(color_values):
+        # Get y values for each x category for this color group
+        y_values = []
+        for x_val in x_values:
+            # Filter data for this x value and color value
+            subset = df[(df[x_col] == x_val) & (df[color_col] == color_val)]
+            if not subset.empty:
+                # Use the actual y value (assuming one value per combination)
+                y_values.append(subset[y_col].iloc[0])
+            else:
+                y_values.append(0)  # Or use None/NaN if you prefer
+        
+        fig.add_trace(
+            go.Bar(
+                x=[str(x) for x in x_values],  # X-axis categories as strings
+                y=y_values,
+                name=str(color_val),
+                marker_color=colors[j],
+                text=y_values,  # Show values on bars
+                textposition='outside'
+            )
+        )
+    
+    fig.update_layout(
+        title=title,
+        template=plot_template,
+        width=fig_width,
+        height=fig_height,
+        font_family="Helvetica",
+        barmode='group',  # This creates the grouped effect
+        xaxis_title=x_col.split('.')[-1] if '.' in x_col else x_col,
+        yaxis_title=y_col.split('.')[-1] if '.' in y_col else y_col
+    )
+    
+    return fig
+
 def create_download_buttons(fig, chart_name: str):
     """Create PNG, PDF, and Excel download buttons for a chart"""
     col1, col2, col3 = st.columns(3)
@@ -699,6 +765,7 @@ CHART_FUNCS: Dict[str, callable] = {
     "Violin": px.violin,
     "Strip": px.strip,
     "Histogram": px.histogram,
+    "Grouped Histogram": "grouped_histogram",  # Special case
     "ECDF": px.ecdf,
 }
 
@@ -737,43 +804,89 @@ for chart_idx in range(st.session_state.num_charts):
                 key=f"chart_type_{chart_idx}"
             )
 
+        # Legend controls
+        col1, col2 = st.columns(2)
+        with col1:
+            legend_position = st.selectbox(
+                "Legend position",
+                options=["auto", "top", "bottom", "left", "right", "hidden"],
+                index=0,
+                key=f"legend_pos_{chart_idx}"
+            )
+        
         x = base_map[x_display]
         y = base_map[y_display]
         color = base_map.get(color_display) if color_display != "None" else None
-        fig_func = CHART_FUNCS[chart_type]
+        
+        # Get display names for axes
+        x_label = get_display_name(x, tag_renames)
+        y_label = get_display_name(y, tag_renames)
+        color_label = get_display_name(color, tag_renames) if color else None
 
-        plot_kw = dict(
-            data_frame=filtered,
-            x=x,
-            y=y,
-            template=plot_template,
-            title=f"{chart_type}: {y_display} vs {x_display}",
-            width=fig_width,
-            height=fig_height
-        )
-
-        # Apply parameter value renaming for display if any
+        # Prepare plot data with parameter value renaming
+        plot_df = filtered.copy()
         if param_value_renames:
-            plot_df = filtered.copy()
             for (p_col, old_value), new_value in param_value_renames.items():
                 if p_col in [x, y, color]:
                     plot_df[p_col] = plot_df[p_col].replace(old_value, new_value)
-            plot_kw["data_frame"] = plot_df
 
-        if color:
-            plot_kw["color"] = color
+        # Handle special case for Grouped Histogram
+        if chart_type == "Grouped Histogram":
+            if color and color != "None":
+                fig = create_grouped_histogram(
+                    plot_df, x, y, color, plot_template, fig_width, fig_height,
+                    f"Grouped Histogram: {y_label} by {color_label} for each {x_label}"
+                )
+            else:
+                st.warning("Grouped Histogram requires a color/series variable to be selected.")
+                continue
+        else:
+            # Regular charts
+            fig_func = CHART_FUNCS[chart_type]
+            
+            plot_kw = dict(
+                data_frame=plot_df,
+                x=x,
+                y=y,
+                template=plot_template,
+                title=f"{chart_type}: {y_label} vs {x_label}",
+                width=fig_width,
+                height=fig_height,
+                labels={x: x_label, y: y_label}
+            )
 
-        fig = fig_func(**plot_kw)
+            if color:
+                plot_kw["color"] = color
+                plot_kw["labels"][color] = color_label
+
+            fig = fig_func(**plot_kw)
+
+        # Apply legend positioning
+        if legend_position == "hidden":
+            fig.update_layout(showlegend=False)
+        elif legend_position != "auto":
+            legend_config = {"orientation": "v"}
+            if legend_position == "top":
+                legend_config.update({"orientation": "h", "y": 1.02, "x": 0.5, "xanchor": "center"})
+            elif legend_position == "bottom":
+                legend_config.update({"orientation": "h", "y": -0.2, "x": 0.5, "xanchor": "center"})
+            elif legend_position == "left":
+                legend_config.update({"x": -0.1, "y": 0.5, "yanchor": "middle"})
+            elif legend_position == "right":
+                legend_config.update({"x": 1.02, "y": 0.5, "yanchor": "middle"})
+            
+            fig.update_layout(legend=legend_config)
+
+        # Update layout
         fig.update_layout(
             font_family="Helvetica", 
-            title_font_size=20, 
-            legend_title_text=color_display if color else ""
+            title_font_size=20
         )
 
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_idx}")
         
         # Download buttons for this chart
-        create_download_buttons(fig, f"chart_{chart_idx + 1}_{chart_type.lower()}")
+        create_download_buttons(fig, f"chart_{chart_idx + 1}_{chart_type.lower().replace(' ', '_')}")
         
         st.divider()
 
@@ -813,16 +926,26 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
         )
 
         if selected_metrics:
-            # Add aggregation options
-            aggregation_method = st.radio(
-                "Aggregation method",
-                options=["Best run (max final value)", "Best run (min final value)", "Best run (avg value)", 
-                         "Max value per epoch", "Min value per epoch", "Average per epoch", "All runs"],
-                index=0,
-                horizontal=True,
-                help="'Best run' methods show all epochs from the run with the best final/average metric value per group",
-                key=f"epoch_agg_{epoch_idx}"
-            )
+            col1, col2 = st.columns(2)
+            with col1:
+                # Add aggregation options
+                aggregation_method = st.radio(
+                    "Aggregation method",
+                    options=["Best run (max final value)", "Best run (min final value)", "Best run (avg value)", 
+                             "Max value per epoch", "Min value per epoch", "Average per epoch", "All runs"],
+                    index=0,
+                    help="'Best run' methods show all epochs from the run with the best final/average metric value per group",
+                    key=f"epoch_agg_{epoch_idx}"
+                )
+            
+            with col2:
+                # Legend controls for epoch charts
+                epoch_legend_position = st.selectbox(
+                    "Legend position",
+                    options=["auto", "top", "bottom", "left", "right", "hidden"],
+                    index=0,
+                    key=f"epoch_legend_pos_{epoch_idx}"
+                )
             
             # Cached function for epoch data
             @st.cache_data(show_spinner="Loading epoch metrics...", ttl=300)
@@ -874,6 +997,9 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                 else:
                     group_by_col = group_by
                 
+                # Get display name for grouping variable
+                group_by_display = get_display_name(group_by_col, tag_renames)
+                
                 # Create epoch-based visualization
                 fig = go.Figure()
                 
@@ -887,6 +1013,9 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                 if "Best run" in aggregation_method:
                     # For "best run" methods, find the best run per group and show all its epochs
                     for metric in selected_metrics:
+                        # Get display name for metric
+                        metric_display = get_display_name(f"metrics.{metric}", tag_renames)
+                        
                         metric_data = plot_data[plot_data['metric'] == metric]
                         
                         for group_val, group_data in metric_data.groupby(group_by_col):
@@ -919,15 +1048,15 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                                 logger.error(f"Error finding best run for metric {metric}: {e}")
                                 continue
                             
-                            # Add trace for this group's best run
-                            trace_name = f"{metric} - {group_val}"
+                            # Add trace for this group's best run - just show group value, not metric name
+                            trace_name = str(group_val) if len(selected_metrics) == 1 else f"{metric_display} - {group_val}"
                             fig.add_trace(go.Scatter(
                                 x=best_run_data['epoch'],
                                 y=best_run_data['value'],
                                 mode='lines+markers',
                                 name=trace_name,
                                 hovertemplate=(
-                                    f"Metric: {metric}<br>"
+                                    f"Metric: {metric_display}<br>"
                                     f"Group: {group_val}<br>"
                                     f"Run: {best_run_id[:8]}...<br>"
                                     "Epoch: %{x}<br>"
@@ -937,7 +1066,7 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                             
                             # Track displayed group info
                             displayed_groups.append({
-                                'Metric': metric,
+                                'Metric': metric_display,
                                 'Group': str(group_val),
                                 'Best Run ID': best_run_id[:8] + '...',
                                 'Final Value': best_run_data['value'].iloc[-1] if len(best_run_data) > 0 else None,
@@ -947,6 +1076,9 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                 elif aggregation_method in ["Max value per epoch", "Min value per epoch", "Average per epoch"]:
                     # Original per-epoch aggregation logic
                     for metric in selected_metrics:
+                        # Get display name for metric
+                        metric_display = get_display_name(f"metrics.{metric}", tag_renames)
+                        
                         metric_data = plot_data[plot_data['metric'] == metric]
                         
                         for group_val, group_data in metric_data.groupby(group_by_col):
@@ -960,7 +1092,8 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                             
                             agg_data = agg_data.sort_values('epoch')
                             
-                            trace_name = f"{metric} - {group_val}"
+                            # Just show group value, not metric name if only one metric
+                            trace_name = str(group_val) if len(selected_metrics) == 1 else f"{metric_display} - {group_val}"
                             fig.add_trace(go.Scatter(
                                 x=agg_data['epoch'],
                                 y=agg_data['value'],
@@ -972,7 +1105,7 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                             # Track displayed group info
                             num_runs = group_data['run_id'].nunique()
                             displayed_groups.append({
-                                'Metric': metric,
+                                'Metric': metric_display,
                                 'Group': str(group_val),
                                 'Aggregation': aggregation_method,
                                 'Num Runs': num_runs,
@@ -982,6 +1115,9 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                 else:  # "All runs"
                     # Show all runs without aggregation
                     for metric in selected_metrics:
+                        # Get display name for metric
+                        metric_display = get_display_name(f"metrics.{metric}", tag_renames)
+                        
                         metric_data = plot_data[plot_data['metric'] == metric]
                         
                         for group_val, group_data in metric_data.groupby(group_by_col):
@@ -989,11 +1125,13 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                             for run_id, run_data in group_data.groupby('run_id'):
                                 run_data = run_data.sort_values('epoch')
                                 
+                                # Show group and run info
+                                trace_name = f"{group_val} - {run_id[:8]}" if len(selected_metrics) == 1 else f"{metric_display} - {group_val} - {run_id[:8]}"
                                 fig.add_trace(go.Scatter(
                                     x=run_data['epoch'],
                                     y=run_data['value'],
                                     mode='lines+markers',
-                                    name=f"{metric} - {group_val} - {run_id[:8]}",
+                                    name=trace_name,
                                     hovertemplate=(
                                         f"Run: {run_id[:8]}...<br>"
                                         "Epoch: %{x}<br>"
@@ -1002,25 +1140,50 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                                 ))
                             
                             num_runs = group_data['run_id'].nunique()
-                            if 'Metric' not in [g for g in displayed_groups if g.get('Group') == str(group_val) and g.get('Metric') == metric]:
+                            if 'Metric' not in [g for g in displayed_groups if g.get('Group') == str(group_val) and g.get('Metric') == metric_display]:
                                 displayed_groups.append({
-                                    'Metric': metric,
+                                    'Metric': metric_display,
                                     'Group': str(group_val),
                                     'Num Runs': num_runs
                                 })
+                
+                # Determine Y-axis label based on selected metrics
+                if len(selected_metrics) == 1:
+                    y_axis_title = get_display_name(f"metrics.{selected_metrics[0]}", tag_renames)
+                else:
+                    y_axis_title = "Value"
                 
                 # Update layout
                 title = f"Metrics by Epoch ({aggregation_method}) - Chart {epoch_idx + 1}"
                 fig.update_layout(
                     title=title,
                     xaxis_title="Epoch",
-                    yaxis_title="Value",
+                    yaxis_title=y_axis_title,
                     template=plot_template,
-                    legend_title=f"Metric - {group_by}",
                     width=fig_width,
                     height=fig_height,
-                    font_family="Helvetica"
+                    font_family="Helvetica",
+                    showlegend=True
                 )
+                
+                # Apply legend positioning for epoch charts
+                if epoch_legend_position == "hidden":
+                    fig.update_layout(showlegend=False)
+                elif epoch_legend_position != "auto":
+                    legend_config = {"orientation": "v", "title": None}  # Always hide legend title
+                    if epoch_legend_position == "top":
+                        legend_config.update({"orientation": "h", "y": 1.02, "x": 0.5, "xanchor": "center"})
+                    elif epoch_legend_position == "bottom":
+                        legend_config.update({"orientation": "h", "y": -0.2, "x": 0.5, "xanchor": "center"})
+                    elif epoch_legend_position == "left":
+                        legend_config.update({"x": -0.1, "y": 0.5, "yanchor": "middle"})
+                    elif epoch_legend_position == "right":
+                        legend_config.update({"x": 1.02, "y": 0.5, "yanchor": "middle"})
+                    
+                    fig.update_layout(legend=legend_config)
+                else:
+                    # Auto position but still hide title
+                    fig.update_layout(legend={"title": None})
                 
                 st.plotly_chart(fig, use_container_width=True, key=f"epoch_chart_{epoch_idx}")
                 
