@@ -410,8 +410,8 @@ def create_grouped_histogram(df: pd.DataFrame, x_col: str, y_col: str, color_col
         height=fig_height,
         font_family="Helvetica",
         barmode='group',  # This creates the grouped effect
-        xaxis_title=x_col.split('.')[-1] if '.' in x_col else x_col,
-        yaxis_title=y_col.split('.')[-1] if '.' in y_col else y_col
+        # xaxis_title=x_col.split('.')[-1] if '.' in x_col else x_col,
+        # yaxis_title=y_col.split('.')[-1] if '.' in y_col else y_col
     )
     
     return fig
@@ -837,6 +837,11 @@ for chart_idx in range(st.session_state.num_charts):
                     plot_df, x, y, color, plot_template, fig_width, fig_height,
                     f"Grouped Histogram: {y_label} by {color_label} for each {x_label}"
                 )
+                # Explicitly set axis titles with renamed labels
+                fig.update_layout(
+                    xaxis_title=x_label,
+                    yaxis_title=y_label
+                )
             else:
                 st.warning("Grouped Histogram requires a color/series variable to be selected.")
                 continue
@@ -860,6 +865,11 @@ for chart_idx in range(st.session_state.num_charts):
                 plot_kw["labels"][color] = color_label
 
             fig = fig_func(**plot_kw)
+
+            fig.update_layout(
+                xaxis_title=x_label,
+                yaxis_title=y_label
+            )
 
         # Apply legend positioning
         if legend_position == "hidden":
