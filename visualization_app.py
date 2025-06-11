@@ -717,9 +717,53 @@ for param, values in param_filters.items():
     filtered = filtered[filtered[param].isin(values)]
 
 # ------------------------------------------------------------------------------------
+# Run ID filtering
+# ------------------------------------------------------------------------------------
+st.sidebar.header("5 · Run ID Filtering")
+with st.sidebar.expander("Filter by Run IDs", expanded=False):
+    # Get all unique run IDs from the current filtered data
+    all_run_ids = sorted(filtered['run_id'].unique().tolist())
+    
+    # Create a more robust display format with experiment names for context
+    run_id_options = []
+    run_id_display_map = {}
+    
+    for run_id in all_run_ids:
+        # Get experiment name for this run
+        exp_name = filtered[filtered['run_id'] == run_id]['experiment_name'].iloc[0]
+        
+        # Create display format: experiment_name/run_id_short
+        display_id = f"{run_id[:20]}"
+        run_id_options.append(display_id)
+        run_id_display_map[display_id] = run_id
+    
+    # Multiselect for run IDs
+    selected_run_ids_display = st.multiselect(
+        "Select Run IDs to include",
+        options=run_id_options,
+        default=run_id_options,  # Default to all run IDs
+        help="Filter runs by their IDs. Format: experiment_name/run_id. By default, all runs are included."
+    )
+    
+    # Convert back to full run IDs
+    selected_run_ids = [run_id_display_map[display_id] for display_id in selected_run_ids_display]
+    
+    # Show count
+    st.caption(f"Selected: {len(selected_run_ids)}/{len(all_run_ids)} runs")
+    
+    # Optional: Add search functionality for large numbers of runs
+    if len(all_run_ids) > 20:
+        st.info("💡 Tip: Use the search box in the multiselect to quickly find specific run IDs")
+
+# Apply run ID filter
+if 'selected_run_ids' in locals() and selected_run_ids and len(selected_run_ids) < len(filtered['run_id'].unique()):
+    filtered = filtered[filtered['run_id'].isin(selected_run_ids)]
+    st.sidebar.success(f"Filtered to {len(selected_run_ids)} runs")
+
+# ------------------------------------------------------------------------------------
 # Plot Style and Figure Size
 # ------------------------------------------------------------------------------------
-st.sidebar.header("5 · Plot Customization")
+st.sidebar.header("6 · Plot Customization")
 with st.sidebar.expander("Plot Style & Size", expanded=False):
     plot_template = st.selectbox(
         "Plot Template",
