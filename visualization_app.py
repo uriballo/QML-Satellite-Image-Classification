@@ -580,13 +580,16 @@ param_value_renames = {}
 # ------------------------------------------------------------------------------------
 st.sidebar.header("2 · Column Management")
 with st.sidebar.expander("Column Filtering & Renaming", expanded=False):
-    # Create separate lists for metrics, params, and tags
+    # Create separate lists for metrics, params, tags, and other columns
     metric_options = [nice(c) for c in metric_cols]
     param_options = [nice(c) for c in param_cols]
     tag_options = [nice(c) for c in tag_cols]
     
-    # Tabs for metrics, params, and tags
-    tab1, tab2, tab3 = st.tabs(["Metrics", "Parameters", "Tags"])
+    # Add other important columns like experiment_name
+    other_cols = ["experiment_name"]  # Add other non-metric/param/tag columns here
+    
+    # Tabs for metrics, params, tags, and other columns
+    tab1, tab2, tab3, tab4 = st.tabs(["Metrics", "Parameters", "Tags", "Other"])
     
     # Metrics tab
     with tab1:
@@ -629,40 +632,64 @@ with st.sidebar.expander("Column Filtering & Renaming", expanded=False):
                 new_name = cols[i % 2].text_input(f"Rename {tag}", value=tag, key=f"rename_tag_{tag}")
                 if new_name != tag:
                     tag_renames[original] = new_name
+    
+    # Other columns tab
+    with tab4:
+        selected_other = st.multiselect("Other columns to display", other_cols, default=other_cols)
+        
+        # Other column renaming
+        if selected_other:
+            st.subheader("Rename Other Columns")
+            cols = st.columns(2)
+            for i, col in enumerate(selected_other):
+                new_name = cols[i % 2].text_input(f"Rename {col}", value=col, key=f"rename_other_{col}")
+                if new_name != col:
+                    tag_renames[col] = new_name
                     
     # Combine all selected columns
     selected_metrics_cols = [f"metrics.{m}" for m in selected_metrics_display]
     selected_params_cols = [f"params.{p}" for p in selected_params_display]
     selected_tags_cols = [f"tags.{t}" for t in selected_tags]
+    selected_other_cols = selected_other
+
 
 # ------------------------------------------------------------------------------------
 # Parameter value renaming
 # ------------------------------------------------------------------------------------
-st.sidebar.header("3 · Parameter Value Renaming")
-with st.sidebar.expander("Rename Parameter Values", expanded=False):
-    st.info("Select parameters and rename their values (e.g., rename '32' to '32px')")
+st.sidebar.header("3 · Value Renaming")
+with st.sidebar.expander("Rename Column Values", expanded=False):
+    st.info("Select columns and rename their values (e.g., rename 'Experiment 1' to 'BERT Model')")
     
-    # Select parameters to rename values for
-    param_options = [nice(p) for p in param_cols if not p.endswith("run_timestamp")]
+    # Combine parameter options with other columns for value renaming
+    param_options_for_renaming = [nice(p) for p in param_cols if not p.endswith("run_timestamp")]
+    other_options_for_renaming = ["experiment_name"]  # Add other columns that should have renameable values
     
-    # Allow selecting multiple parameters
-    selected_params = st.multiselect("Parameters to rename values", options=param_options)
+    all_renameable_options = param_options_for_renaming + other_options_for_renaming
     
-    # Parameter value renaming
-    for selected_param in selected_params:
-        param_col = f"params.{selected_param}"
-        unique_values = filtered[param_col].unique().tolist()
+    # Allow selecting multiple columns for value renaming
+    selected_cols_for_renaming = st.multiselect("Columns to rename values", options=all_renameable_options)
+    
+    # Column value renaming
+    for selected_col in selected_cols_for_renaming:
+        # Determine the actual column name
+        if selected_col == "experiment_name":
+            actual_col = "experiment_name"
+        else:
+            actual_col = f"params.{selected_col}"
         
-        st.subheader(f"Rename values for {selected_param}")
+        unique_values = filtered[actual_col].unique().tolist()
+        
+        st.subheader(f"Rename values for {selected_col}")
         cols = st.columns(2)
         for i, value in enumerate(unique_values):
             new_value = cols[i % 2].text_input(
                 f"Rename '{value}'", 
                 value=value, 
-                key=f"rename_val_{selected_param}_{value}"
+                key=f"rename_val_{selected_col}_{value}"
             )
             if new_value != value:
-                param_value_renames[(param_col, value)] = new_value
+                param_value_renames[(actual_col, value)] = new_value
+
 
 # ------------------------------------------------------------------------------------
 # Param filtering for plots
@@ -726,7 +753,7 @@ with st.expander("Show DataFrame", expanded=False):
             display_df[param_col] = display_df[param_col].replace(old_value, new_value)
     
     # Filter columns based on selections
-    cols_to_show = selected_metrics_cols + selected_params_cols + selected_tags_cols + ["experiment_name", "run_id"]
+    cols_to_show = selected_metrics_cols + selected_params_cols + selected_tags_cols + selected_other_cols + ["run_id"]
     cols_to_show = [c for c in cols_to_show if c in display_df.columns]
     
     if cols_to_show:
@@ -735,8 +762,27 @@ with st.expander("Show DataFrame", expanded=False):
         st.dataframe(display_df, hide_index=True)
 
 # Base mapping for chart builder
-base_map: Dict[str, str] = {nice(c): c for c in metric_cols + param_cols + tag_cols}
-base_map["experiment_name"] = "experiment_name"
+base_map: Dict[str, str] = {}
+
+# Add metrics with potential renames
+for c in metric_cols:
+    display_name = get_display_name(c, tag_renames)
+    base_map[display_name] = c
+
+# Add params with potential renames  
+for c in param_cols:
+    display_name = get_display_name(c, tag_renames)
+    base_map[display_name] = c
+
+# Add tags with potential renames
+for c in tag_cols:
+    display_name = get_display_name(c, tag_renames)
+    base_map[display_name] = c
+
+# Add other columns with potential renames
+experiment_name_display = get_display_name("experiment_name", tag_renames)
+base_map[experiment_name_display] = "experiment_name"
+
 
 # ------------------------------------------------------------------------------------
 # Multiple Chart Builders
@@ -1078,7 +1124,7 @@ for epoch_idx in range(st.session_state.num_epoch_charts):
                             displayed_groups.append({
                                 'Metric': metric_display,
                                 'Group': str(group_val),
-                                'Best Run ID': best_run_id[:8] + '...',
+                                'Best Run ID': best_run_id,
                                 'Final Value': best_run_data['value'].iloc[-1] if len(best_run_data) > 0 else None,
                                 'Num Epochs': len(best_run_data)
                             })
