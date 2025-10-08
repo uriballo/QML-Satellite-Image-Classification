@@ -87,10 +87,7 @@ class Trainer:
         if self.schedulefree:
             self.optimizer = sf.AdamWScheduleFree(model.parameters(), lr=lr)
         else:
-            self.optimizer = torch.optim.Adam(model.parameters(), lr = lr)
-        
-        all_labels = []
-        all_preds = []        
+            self.optimizer = torch.optim.Adam(model.parameters(), lr = lr)      
 
         if self.log:
             mlflow.set_experiment(self.mlflow_project)
@@ -158,6 +155,9 @@ class Trainer:
 
         for epoch in range(epochs):
             model.train()
+
+            all_labels = []
+            all_preds = []  
 
             if self.schedulefree:
                 self.optimizer.train()
@@ -279,3 +279,4 @@ class Trainer:
         
         
         return val_loss, val_acc, precision, recall, f1, self.confusion_matrix_val
+
